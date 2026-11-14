@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function role() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function approved() { return request.auth != null && role() in ['admin', 'eo', 'pmc', 'tm']; }
+
+    match /sites/{siteId}/photos/{allPaths=**} {
+      allow read: if approved();
+      allow create: if request.auth != null && role() in ['admin', 'pmc']
+        && request.resource.size < 3 * 1024 * 1024 && request.resource.contentType.matches('image/.*');
+    }
+    match /sites/{siteId}/drawings/{file} {
+      allow read: if approved();
+      allow create: if request.auth != null && role() in ['admin', 'pmc']
+        && request.resource.size < 25 * 1024 * 1024 && request.resource.contentType == 'application/pdf';
+    }
+    match /standard-drawings/{file} {
+      allow read: if approved();
+      allow create: if request.auth != null && role() in ['admin', 'eo']
+        && request.resource.size < 25 * 1024 * 1024 && request.resource.contentType == 'application/pdf';
+    }
+  }
+}

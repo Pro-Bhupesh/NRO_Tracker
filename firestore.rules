@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function role() { return signedIn() && exists(userPath()) ? get(userPath()).data.role : 'none'; }
+    function isAdmin() { return role() == 'admin'; }
+    function isEO() { return role() in ['eo', 'admin']; }
+    function approved() { return role() in ['admin', 'eo', 'pmc', 'tm']; }
+    function isSitePmc(siteId) {
+      return role() == 'pmc' && get(/databases/$(database)/documents/sites/$(siteId)).data.pmcUid == request.auth.uid;
+    }
+
+    // Logins are created by the admin only. Users can read their own record; EO and admin read all.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isEO());
+      allow create, update: if isAdmin();
+    }
+
+    // Sites: EO and admin manage; the assigned PMC may change progress fields only; TM reads.
+    match /sites/{siteId} {
+      allow read: if role() in ['admin', 'eo', 'tm'] || (role() == 'pmc' && resource.data.pmcUid == request.auth.uid);
+      allow create: if isEO();
+      allow update: if isEO() || (role() == 'pmc' && resource.data.pmcUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['acts', 'updDays', 'lastPhotos', 'lastUpdate', 'visitDays', 'plan', 'draw']));
+      allow delete: if isAdmin();
+
+      // updates, visits, meas, mom
+      match /{sub}/{docId} {
+        allow read: if role() in ['admin', 'eo', 'tm'] || isSitePmc(siteId);
+        allow create: if isAdmin() || isSitePmc(siteId) || (isEO() && sub in ['mom', 'updates']);
+        allow update: if isAdmin() || isSitePmc(siteId) || (isEO() && sub in ['mom', 'updates']);
+        allow delete: if isAdmin() || (isSitePmc(siteId) && sub == 'meas');
+      }
+    }
+
+    // Letters: PMC drafts, EO issues.
+    match /letters/{id} {
+      allow read: if approved();
+      allow create: if isEO() || (role() == 'pmc' && request.resource.data.status == 'Draft');
+      allow update: if isEO();
+      allow delete: if isAdmin();
+    }
+
+    // Standard drawings: EO and admin upload, everyone approved reads.
+    match /std/{id} {
+      allow read: if approved();
+      allow create, update: if isEO();
+      allow delete: if isAdmin();
+    }
+  }
+}

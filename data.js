@@ -1,0 +1,15 @@
+// Master data for the NRO tracker. Edit here to change the activity template, phases or mappings.
+export const PHASES = [["Site preparation", 15], ["Structures", 15], ["Tank and pipeline", 25], ["Electrical and automation", 15], ["Drainage and driveway", 20], ["Branding and commissioning", 10]];
+export const OWN = { P: "Consultant", D: "Dealer", C: "Contractor", CD: "Contractor / Dealer", S: "Signage vendor" };
+// [activity, phase index, owner in CC, owner in DC]
+export const ACTS = [["Marking / line out for dealer", 0, "P", "P"], ["Demolition", 0, "D", "D"], ["Site cutting", 0, "D", "D"], ["Filling", 0, "D", "D"], ["Levelling", 0, "D", "D"], ["Compaction", 0, "D", "D"], ["Retaining wall", 0, "D", "D"], ["Compound wall", 0, "D", "D"], ["Water connection", 0, "D", "D"], ["Electrical connection / transformer", 0, "D", "D"], ["Marking for contractor", 0, "P", "P"], ["Canopy foundation (4 nos)", 1, "C", "D"], ["Sales building", 1, "C", "D"], ["Tank installation", 2, "C", "C"], ["Tank testing", 2, "C", "C"], ["ID signage foundation", 1, "C", "C"], ["Pipeline work", 2, "C", "C"], ["Pipeline testing", 2, "C", "C"], ["Pump installation", 2, "C", "C"], ["STP installation", 2, "C", "C"], ["MLD fixing", 2, "C", "C"], ["Pump island", 2, "C", "C"], ["Nosing / tiling", 2, "C", "C"], ["Pipe for electrical & chambers", 3, "C", "C"], ["Pipe for automation cables & chambers", 3, "C", "C"], ["Pipe for canopy drain & chambers", 4, "C", "D"], ["Main drain - culvert RCC", 4, "C", "D"], ["Open drain", 4, "C", "D"], ["Septic tank & soak pit", 4, "C", "D"], ["GSB / WMM", 4, "C", "D"], ["Driveway pavers", 4, "C", "D"], ["Approach pavers", 4, "D", "D"], ["Buffer", 4, "C", "D"], ["Kerb wall - BBM / kerb stone", 4, "D", "D"], ["Panel", 3, "C", "C"], ["Electrical cabling and finishing", 3, "CD", "CD"], ["Earthing", 3, "CD", "CD"], ["GI strips", 3, "CD", "CD"], ["UPS", 3, "C", "C"], ["Stabilizers", 3, "C", "C"], ["Light poles", 3, "D", "D"], ["ID signage installation", 5, "S", "S"], ["Canopy", 5, "D", "D"], ["RVI", 5, "D", "D"], ["DU stamping", 5, "D", "D"], ["Nozzle sales", 5, "D", "D"], ["Landscaping / gardening", 5, "D", "D"], ["Compressor & air tower", 5, "D", "D"], ["FE & EN buckets", 5, "D", "D"], ["DG", 5, "D", "D"], ["Misc items", 5, "D", "D"], ["All finishing / handover to company", 5, "CD", "CD"]];
+export const SALES_GROUPS = ["236", "960", "235", "573", "953"];
+export const DISTRICTS = ["Belagavi", "Dharwad", "Haveri", "Gadag", "Bagalkot"];
+export const DRAW_SLOTS = [["ro", "RO layout"], ["elec", "Electrical layout"], ["found", "Foundation layout"]];
+export const TERRITORY = "Belgaum Retail Territory";
+export const LETTER_PREFIX = "BRT/ENG/NRO";
+export const TARGET_DAYS = 60;      // default completion target per NRO
+export const STALL_DAYS = 5;        // an in-progress activity with no change for this many days is flagged
+export const UPDATE_DAYS_PER_WEEK = 3;
+export const SITE_RADIUS_M = 300;   // check-in within this distance of the site counts as "at site"
+export const ID_DOMAIN = "nro-tracker.local"; // User IDs are stored in Firebase Auth as <id>@<this domain>; do not change after users exist
