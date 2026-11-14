@@ -4,7 +4,8 @@ import { ACTS, ID_DOMAIN } from "./data.js";
 
 export const DEMO = !firebaseConfig.apiKey;
 export const DEL = { __del: true }; // pass as a value in a patch to delete that field
-const idToEmail = id => `${String(id).trim().toLowerCase()}@${ID_DOMAIN}`;
+// A plain User ID becomes <id>@ID_DOMAIN. If a full email address is typed, it is used as it is.
+const idToEmail = id => { const v = String(id).trim().toLowerCase(); return v.includes("@") ? v : `${v}@${ID_DOMAIN}`; };
 const SDK = "https://www.gstatic.com/firebasejs/10.14.1/";
 
 export async function initStore() { return DEMO ? localStore() : firebaseStore(); }

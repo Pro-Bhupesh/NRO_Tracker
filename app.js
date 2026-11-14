@@ -131,8 +131,8 @@ function vDash() {
   const kp = [["Active NROs", n, `${act.filter(s => s.cat === "CC").length} CC, ${act.filter(s => s.cat === "DC").length} DC`], ["Average progress", avg + "%", "weighted by phase"], ["At risk or delayed", act.filter(s => ["bad", "warn"].includes(health(s)[0])).length, "against target days"], ["Visits this week", `${done} / ${planned}`, "done / planned"], [`${UPDATE_DAYS_PER_WEEK}-day update rule`, `${act.filter(s => updInWeek(s, ws).length >= UPDATE_DAYS_PER_WEEK).length} / ${n}`, "sites compliant this week"], ["Stalled activities", act.reduce((a, s) => a + stalledList(s).length, 0), `no change for ${STALL_DAYS}+ days`]];
   return head("Overview", "", isEO() ? `<button class="btn" data-a="siteform">New NRO</button>` : "") + `
   <div class="panel kpis">${kp.map(k => `<div class="kpi"><span>${k[0]}</span><b>${k[1]}</b><small>${k[2]}</small></div>`).join("")}</div>
-  <div class="panel"><div class="ptitle"><h2>Projects</h2><span class="note">Click a row to open</span></div><div class="tw"><table><thead><tr><th>Site</th><th>Type</th><th>EO / SO</th><th>Schedule</th><th>Phases</th><th>Overall</th><th class="n">Contractor</th><th class="n">Dealer</th><th class="n">Day</th><th>Updates this week</th></tr></thead><tbody>
-  ${act.map(s => { const h = health(s); return `<tr class="click" data-a="open" data-v="${s.id}" tabindex="0"><td><b>${esc(s.name)}</b><br><span class="note">${esc(s.place)}</span></td><td><span class="tag cat">${s.cat}</span></td><td>${esc(s.eoName || "Not mapped")}<br><span class="note">${esc(s.soName || "SO not mapped")}</span></td><td>${chip(h[0], h[1])}</td><td><div class="phases">${PHASES.map((p, pi) => `<i title="${p[0]}"><b style="width:${phasePct(s, pi) || 0}%"></b></i>`).join("")}</div></td><td>${pm(overall(s))}</td><td class="n">${byOwner(s, "C")}%</td><td class="n">${byOwner(s, "D")}%</td><td class="n">${dayNo(s)} / ${s.targetDays || TARGET_DAYS}</td><td>${dots(s, ws)}</td></tr>`; }).join("") || `<tr><td colspan="10" class="note">No projects yet.${isEO() ? " Use New NRO to add the first site." : ""}</td></tr>`}
+  <div class="panel"><div class="ptitle"><h2>Projects</h2><span class="note">Click a row to open</span></div><div class="tw"><table class="cards"><thead><tr><th>Site</th><th>Type</th><th>EO / SO</th><th>Schedule</th><th>Phases</th><th>Overall</th><th class="n">Contractor</th><th class="n">Dealer</th><th class="n">Day</th><th>Updates this week</th></tr></thead><tbody>
+  ${act.map(s => { const h = health(s); return `<tr class="click" data-a="open" data-v="${s.id}" tabindex="0"><td><b>${esc(s.name)}</b><br><span class="note">${esc(s.place)}</span></td><td data-l="Type"><span class="tag cat">${s.cat}</span></td><td data-l="EO / SO">${esc(s.eoName || "Not mapped")}<br><span class="note">${esc(s.soName || "SO not mapped")}</span></td><td data-l="Schedule">${chip(h[0], h[1])}</td><td data-l="Phases"><div class="phases">${PHASES.map((p, pi) => `<i title="${p[0]}"><b style="width:${phasePct(s, pi) || 0}%"></b></i>`).join("")}</div></td><td data-l="Overall">${pm(overall(s))}</td><td data-l="Contractor scope" class="n">${byOwner(s, "C")}%</td><td data-l="Dealer scope" class="n">${byOwner(s, "D")}%</td><td data-l="Day" class="n">${dayNo(s)} / ${s.targetDays || TARGET_DAYS}</td><td data-l="Updates this week">${dots(s, ws)}</td></tr>`; }).join("") || `<tr><td colspan="10" class="note full">No projects yet.${isEO() ? " Use New NRO to add the first site." : ""}</td></tr>`}
   </tbody></table></div></div>
   <div class="grid two">
     <div class="panel"><div class="ptitle"><h2>Needs attention</h2><span class="note">${ex.length} items</span></div><ul class="att">${ex.slice(0, 12).map(e => `<li class="${e[0]} click" data-a="open" data-v="${e[1].id}" tabindex="0"><div><b>${esc(e[1].name)}</b><br><span class="note">${esc(e[2])}</span></div></li>`).join("") || `<li class="none"><span class="note">Nothing pending.</span></li>`}${ex.length > 12 ? `<li class="none"><span class="note">and ${ex.length - 12} more. Open a project to see all its items.</span></li>` : ""}</ul></div>
@@ -143,7 +143,7 @@ function vDash() {
 function vSiteList() {
   const eos = uniq(sites.map(s => s.eoName).filter(Boolean)), list = sites.filter(s => !R.fEO || s.eoName === R.fEO);
   return head("Projects", "", `<label class="inline">EO <select data-c="feo"><option value="">All</option>${eos.map(e => opt(e, e, R.fEO)).join("")}</select></label>${isEO() ? `<button class="btn" data-a="siteform">New NRO</button>` : ""}`) +
-    `<div class="panel tw"><table><thead><tr><th>Site</th><th>District</th><th>Type</th><th>Sales group</th><th>EO</th><th>SO</th><th>Contractor</th><th>PMC</th><th>Schedule</th><th>Overall</th></tr></thead><tbody>${list.map(s => { const h = health(s); return `<tr class="click" data-a="open" data-v="${s.id}" tabindex="0"><td><b>${esc(s.name)}</b><br><span class="note">${esc(s.place)}</span></td><td>${esc(s.district)}</td><td><span class="tag cat">${s.cat}</span></td><td>${esc(s.sg || "Not mapped")}</td><td>${esc(s.eoName || "Not mapped")}</td><td>${esc(s.soName || "Not mapped")}</td><td>${esc(s.contractor || "")}</td><td>${esc(s.pmcName || "Not assigned")}</td><td>${s.status === "commissioned" ? chip("ok", "Commissioned") : chip(h[0], h[1])}</td><td>${pm(overall(s))}</td></tr>`; }).join("") || `<tr><td colspan="10" class="note">No projects.</td></tr>`}</tbody></table></div>`;
+    `<div class="panel tw"><table class="cards"><thead><tr><th>Site</th><th>District</th><th>Type</th><th>Sales group</th><th>EO</th><th>SO</th><th>Contractor</th><th>PMC</th><th>Schedule</th><th>Overall</th></tr></thead><tbody>${list.map(s => { const h = health(s); return `<tr class="click" data-a="open" data-v="${s.id}" tabindex="0"><td><b>${esc(s.name)}</b><br><span class="note">${esc(s.place)}</span></td><td data-l="District">${esc(s.district)}</td><td data-l="Type"><span class="tag cat">${s.cat}</span></td><td data-l="Sales group">${esc(s.sg || "Not mapped")}</td><td data-l="EO">${esc(s.eoName || "Not mapped")}</td><td data-l="SO">${esc(s.soName || "Not mapped")}</td><td data-l="Contractor">${esc(s.contractor || "")}</td><td data-l="PMC">${esc(s.pmcName || "Not assigned")}</td><td data-l="Schedule">${s.status === "commissioned" ? chip("ok", "Commissioned") : chip(h[0], h[1])}</td><td data-l="Overall">${pm(overall(s))}</td></tr>`; }).join("") || `<tr><td colspan="10" class="note full">No projects.</td></tr>`}</tbody></table></div>`;
 }
 
 function vSite() {
@@ -215,9 +215,10 @@ function render() {
   const app = $("app"), full = $("full");
   if (!me || me.role === "pending") { app.hidden = true; full.hidden = false; full.innerHTML = me ? vPending() : vAuth(); return; }
   app.hidden = false; full.hidden = true; full.innerHTML = "";
-  const tabs = [["dash", "Overview"], ["sites", "Projects", sites.length], ["visits", "Site visits"], ["draw", "Drawings"], ["letters", "Letters"]]; if (isAdmin()) tabs.push(["users", "Users"]);
-  $("nav").innerHTML = tabs.map(t => `<button ${R.tab === t[0] ? 'aria-current="page"' : ""} data-a="tab" data-v="${t[0]}"><span>${t[1]}</span>${t[2] !== undefined ? `<em>${t[2]}</em>` : ""}</button>`).join("");
-  $("who").innerHTML = `<b>${esc(me.name)}</b><span>${ROLE[me.role]}${DEMO ? " &middot; demo mode" : ""}</span><button class="link" data-a="pwform">Change password</button><button class="link" data-a="logout">Sign out</button>`;
+  const NI = { dash: "M4 4h7v7H4zm9 0h7v4h-7zM4 13h7v7H4zm9-3h7v10h-7z", sites: "M4 21V9l8-5 8 5v12h-6v-5h-4v5z", visits: "M6 3h2v2h8V3h2v2h2v16H4V5h2zm0 6v10h12V9z", draw: "M6 3h8l4 4v14H6zm7 1.5V8h3.5z", letters: "M3 5h18v14H3zm2 3v1l7 5 7-5V8l-7 5z", users: "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm-6 8c0-3 2.7-5 6-5s6 2 6 5zm14-8a3 3 0 1 0 0-6zm1 3c2 .6 3 2 3 5h-4c0-2-.4-3.6-1.6-4.8z" };
+  const tabs = [["dash", "Overview"], ["sites", "Projects", sites.length], ["visits", "Visits"], ["draw", "Drawings"], ["letters", "Letters"]]; if (isAdmin()) tabs.push(["users", "Users"]);
+  $("nav").innerHTML = tabs.map(t => `<button ${R.tab === t[0] ? 'aria-current="page"' : ""} data-a="tab" data-v="${t[0]}"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="${NI[t[0]]}"/></svg><span>${t[1]}</span>${t[2] ? `<em>${t[2]}</em>` : ""}</button>`).join("");
+  $("who").innerHTML = `<b>${esc(me.name)}</b><span>${ROLE[me.role]}${DEMO ? " &middot; demo mode" : ""}</span><button class="link" data-a="pwform">Change password</button><button class="link" data-a="logout">Sign out</button>${installEvt ? `<button class="install" data-a="install">Install app</button>` : ""}`;
   $("main").innerHTML = R.tab === "dash" ? vDash() : R.tab === "sites" ? (R.siteId && site(R.siteId) ? vSite() : vSiteList()) : R.tab === "visits" ? vVisits() : R.tab === "draw" ? vDraw() : R.tab === "letters" ? vLetters() : vUsers();
 }
 
@@ -284,7 +285,11 @@ async function saveEntry(s, i, next, note, file) {
   if (photo) u.photo = photo; if (pos) u.pos = pos;
   await store.subAdd(s.id, "updates", u);
 }
+let installEvt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; if (me && me.role !== "pending") render(); });
+window.addEventListener("appinstalled", () => { installEvt = null; if (me) render(); });
 const H = {
+  install: async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice.catch(() => { }); installEvt = null; render(); },
   demo: v => run(() => store.login(v)),
   resetdemo: () => store.reset(),
   eye: (v, b) => { const i = b.parentNode.querySelector("input"); i.type = i.type === "password" ? "text" : "password"; b.setAttribute("aria-label", i.type === "password" ? "Show password" : "Hide password"); },
@@ -413,6 +418,7 @@ document.addEventListener("submit", e => {
 });
 
 /* ---------- start ---------- */
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("sw.js").catch(() => { });
 (async () => {
   try { store = await initStore(); } catch (e) { $("full").hidden = false; $("full").innerHTML = `<div class="auth"><div class="dlg"><div class="pad"><h2>Could not connect</h2><p>${esc(e.message)}</p><p class="note">Check firebase-config.js and your network, then reload.</p></div></div></div>`; return; }
   store.onAuth(async p => { me = p; users = []; if (me && me.role !== "pending") { R.tab = "dash"; R.siteId = null; await run(refresh); } else render(); });
