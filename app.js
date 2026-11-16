@@ -1,5 +1,5 @@
-import { PHASES, OWN, ACTS, SALES_GROUPS, DISTRICTS, DRAW_SLOTS, TERRITORY, LETTER_PREFIX, TARGET_DAYS, STALL_DAYS, UPDATE_DAYS_PER_WEEK, SITE_RADIUS_M } from "./data.js";
-import { initStore, DEMO, DEL, blankActs } from "./store.js";
+import { PHASES, OWN, ACTS, SALES_GROUPS, DISTRICTS, DRAW_SLOTS, TERRITORY, LETTER_PREFIX, TARGET_DAYS, STALL_DAYS, UPDATE_DAYS_PER_WEEK, SITE_RADIUS_M, APP_VERSION, UPDATE_DAY_NEEDS_PHOTO } from "./data.js?v=2.4";
+import { initStore, DEMO, DEL, blankActs } from "./store.js?v=2.4";
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -25,7 +25,8 @@ const L = { siteId: "", act: 0, type: "Delay", obs: "" };
 
 const isAdmin = () => me.role === "admin";
 const isEO = () => me.role === "eo" || me.role === "admin";
-const canMake = s => me.role === "admin" || (me.role === "pmc" && s.pmcUid === me.uid); // maker: PMC of the site
+const canMake = s => me.role === "admin" || me.role === "pmc"; // makers: any PMC, on any project
+const canEdit = () => ["admin", "eo", "pmc"].includes(me.role); // may create and edit projects, scope and timelines
 const site = id => sites.find(s => s.id === id);
 const actName = i => ACTS[i - 1][0];
 const owner = (s, i) => (s.acts[i] && s.acts[i].own) || ACTS[i - 1][s.cat === "CC" ? 2 : 3];
@@ -37,6 +38,7 @@ function byOwner(s, k) { let sum = 0, n = 0; ACTS.forEach((a, j) => { const x = 
 const dayNo = s => s.startDate ? Math.max(1, diff(today(), s.startDate) + 1) : 0;
 function health(s) { if (!s.startDate) return ["", "Not started"]; const gap = overall(s) - Math.min(100, Math.round(dayNo(s) / (s.targetDays || TARGET_DAYS) * 100)); return gap < -20 ? ["bad", "Delayed"] : gap < -5 ? ["warn", "At risk"] : ["ok", "On track"]; }
 const stalledDays = (s, i) => { const x = s.acts[i]; return x.s === "W" && x.chg && diff(today(), x.chg) >= STALL_DAYS ? diff(today(), x.chg) : 0; };
+const overdueDays = (s, i) => { const x = s.acts[i]; return x.pe && !"CN".includes(x.s) && x.pe < today() ? diff(today(), x.pe) : 0; };
 const stalledList = s => ACTS.map((a, k) => k + 1).filter(i => stalledDays(s, i));
 const updInWeek = (s, ws) => uniq((s.updDays || []).filter(d => d >= ws && d <= addDays(ws, 6)));
 const drawCount = s => DRAW_SLOTS.filter(d => s.draw && s.draw[d[0]]).length;
@@ -58,7 +60,7 @@ const ICONS = {
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>', download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   check: '<path d="M20 6 9 17l-5-5"/>', edit: '<path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>', upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>', inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
-  x: '<path d="M18 6 6 18M6 6l12 12"/>', sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/>', clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'
+  x: '<path d="M18 6 6 18M6 6l12 12"/>', trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14M10 11v6M14 11v6"/>', sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/>', clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'
 };
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
 const chip = (c, t) => `<span class="chip ${c ? "c-" + c : ""}">${esc(t)}</span>`;
@@ -105,7 +107,7 @@ async function compress(file, stamp) {
 /* ---------- data loading ---------- */
 async function refresh() {
   sites = (await store.listSites(me)).sort((a, b) => a.name.localeCompare(b.name));
-  if (isEO() && (R.tab === "users" || !users.length)) users = await store.listUsers();
+  if (canEdit() && (R.tab === "users" || !users.length)) users = await store.listUsers();
   if (R.tab === "letters") { letters = await store.topList("letters"); if (!site(L.siteId) && sites[0]) { L.siteId = sites[0].id; L.act = firstOpen(sites[0]); } }
   if (R.tab === "draw") std = await store.topList("std");
   if (R.tab === "visits") { visitsAll = []; for (const s of sites) (await store.subList(s.id, "visits", 10)).forEach(v => visitsAll.push({ ...v, site: s.name })); visitsAll.sort((a, b) => b.ts.localeCompare(a.ts)); }
@@ -142,6 +144,7 @@ function vAuth() {
       : `${fld("uid", "text", "User ID", U, 'autocomplete="username" autocapitalize="none" spellcheck="false"')}${fld("pw", "password", "Password", K, 'autocomplete="current-password"')}
       <button class="btn wide" type="submit">Sign In</button>
       <p class="note center">Logins are issued by the admin. If you have forgotten your password, ask the admin for a new login.</p>`}
+    <p class="note center ver">Version ${APP_VERSION}</p>
   </div></form></div>`;
 }
 function vPending() { return `<div class="auth"><div class="dlg"><div class="pad"><div class="brand dark"><b>NRO <i>Tracker</i></b><span>${TERRITORY}</span></div><h2>No access</h2><p>${esc(me.name)}, this login has no role at present. Ask the admin to give you access.</p><div class="row"><button class="btn" data-a="reload">Check again</button><button class="btn ghost" data-a="logout">Sign out</button></div></div></div></div>`; }
@@ -150,6 +153,7 @@ function attention() {
   let ex = [];const ws = weekStart(today());
   sites.filter(s => s.status !== "commissioned").forEach(s => {
     stalledList(s).forEach(i => ex.push(["bad", s, `${actName(i)}: no progress for ${stalledDays(s, i)} days (${OWN[owner(s, i)]})`]));
+    ACTS.forEach((x, k) => { const od = overdueDays(s, k + 1); if (od) ex.push(["bad", s, `${x[0]}: ${od} days past planned finish (${OWN[owner(s, k + 1)]})`]); });
     Object.keys(s.plan || {}).filter(d => d >= addDays(today(), -14) && planState(s, d) === "missed").forEach(d => ex.push(["bad", s, `Planned visit on ${fmt(d)} was missed`]));
     const u = updInWeek(s, ws).length; if (u < UPDATE_DAYS_PER_WEEK) ex.push(["warn", s, `${u} of ${UPDATE_DAYS_PER_WEEK} update days this week`]);
     DRAW_SLOTS.forEach(d => { if (!(s.draw && s.draw[d[0]])) ex.push(["warn", s, `${d[1]} not uploaded`]); });
@@ -179,7 +183,7 @@ function projectCard(s) {
 }
 function plistHtml() {
   const list = filtered();
-  if (!baseList().length) return empty("sites", "No projects yet", isEO() ? "Add the first NRO to start tracking its progress." : "Projects assigned to you will appear here.", isEO() ? `<button class="btn" data-a="siteform">${ic("plus")}New NRO</button>` : "");
+  if (!baseList().length) return empty("sites", "No projects yet", canEdit() ? "Add the first NRO to start tracking its progress." : "Projects will appear here once they are added.", canEdit() ? `<button class="btn" data-a="siteform">${ic("plus")}New NRO</button>` : "");
   return list.length ? `<div class="pgrid">${list.map(projectCard).join("")}</div>` : empty("search", "No matching projects", "Try a different search or clear the filters.", `<button class="btn ghost" data-a="clearf">Clear filters</button>`);
 }
 function projectTools() {
@@ -188,8 +192,8 @@ function projectTools() {
   return `<div class="tools"><label class="search">${ic("search")}<input type="search" data-i="q" value="${esc(R.q)}" placeholder="Search site, place, EO, SO, contractor" aria-label="Search projects"></label>
     <div class="tools-r"><select data-c="fcat" aria-label="Category">${opt("", "CC and DC", R.fc)}${opt("CC", "CC only", R.fc)}${opt("DC", "DC only", R.fc)}</select>${eos.length > 1 ? `<select data-c="feo" aria-label="EO"><option value="">All EOs</option>${eos.map(e => opt(e, e, R.fEO)).join("")}</select>` : ""}<select data-c="sort" aria-label="Sort by">${Object.keys(SORTS).map(k => opt(k, "Sort: " + SORTS[k][0], R.sort)).join("")}</select></div></div>${fchips("fstat", R.fs, st)}`;
 }
-const newBtn = () => isEO() ? `<button class="btn d-only" data-a="siteform">${ic("plus")}New NRO</button>` : "";
-const newFab = () => isEO() ? `<button class="fab" data-a="siteform" aria-label="New NRO">${ic("plus")}<span>New NRO</span></button>` : "";
+const newBtn = () => canEdit() ? `<button class="btn d-only" data-a="siteform">${ic("plus")}New NRO</button>` : "";
+const newFab = () => canEdit() ? `<button class="fab" data-a="siteform" aria-label="New NRO">${ic("plus")}<span>New NRO</span></button>` : "";
 
 function vDash() {
   const act = sites.filter(s => s.status !== "commissioned"), n = act.length, ws = weekStart(today());
@@ -210,31 +214,57 @@ function vSiteList() { return head("", newBtn(), newFab()) + `${projectTools()}<
 
 function vSite() {
   const s = site(R.siteId), mk = canMake(s), h = health(s), d = sub[s.id] || {}, o = overall(s), done = s.status === "commissioned";
-  const tabs = [["acts", "Activities"], ["photos", "Photos"], ["visits", "Visits"], ["meas", "Measurements"], ["mom", "MoM"], ["draw", `Drawings ${drawCount(s)}/${DRAW_SLOTS.length}`], ["log", "Update log"]];
+  const tabs = [["acts", "Activities"], ["gantt", "Timeline"], ["photos", "Photos"], ["visits", "Visits"], ["meas", "Measurements"], ["mom", "MoM"], ["draw", `Drawings ${drawCount(s)}/${DRAW_SLOTS.length}`], ["log", "Update log"]];
   const target = s.startDate ? addDays(s.startDate, (s.targetDays || TARGET_DAYS) - 1) : "";
   let body = "";
   if (R.sub === "acts") {
     const all = ACTS.map((a, k) => k + 1), cnt = f => all.filter(i => actMatch(s, i, f)).length;
-    body = `<div class="acts-tools">${fchips("af", R.af, [["", "All", all.length], ["W", "In progress", cnt("W")], ["Y", "Not started", cnt("Y")], ["C", "Completed", cnt("C")], ["S", "Stalled", cnt("S")]])}${isEO() ? `<button class="btn ghost sm" data-a="openform">Enter opening status</button>` : ""}</div>
+    body = `<div class="acts-tools">${fchips("af", R.af, [["", "All", all.length], ["W", "In progress", cnt("W")], ["Y", "Not started", cnt("Y")], ["C", "Completed", cnt("C")], ["S", "Stalled", cnt("S")], ["O", "Overdue", cnt("O")]])}${canEdit() ? `<div class="row"><button class="btn ghost sm" data-a="planform">Plan timeline</button><button class="btn ghost sm" data-a="openform">Enter opening status</button></div>` : ""}</div>
     ${PHASES.map((ph, pi) => { const ids = all.filter(i => ACTS[i - 1][1] === pi), show = ids.filter(i => actMatch(s, i, R.af)), pp = phasePct(s, pi) || 0, dn = ids.filter(i => s.acts[i].s === "C").length, na = ids.filter(i => s.acts[i].s === "N").length;
       if (!show.length) return "";
       return `<details class="phase" ${pp < 100 || R.af ? "open" : ""}><summary><span class="ph-n ${pp === 100 ? "done" : ""}">${pp === 100 ? ic("check") : pi + 1}</span><div class="ph-t"><b>${ph[0]}</b><span>${dn} of ${ids.length - na} completed</span></div>${pm(pp)}${ic("down")}</summary>
-      <div class="acts">${show.map(i => { const x = s.acts[i], sd = stalledDays(s, i); return `<div class="act ${mk ? "tap" : ""} s-${x.s}" ${mk ? `data-a="actform" data-v="${i}" tabindex="0" role="button"` : ""}><span class="act-n">${i}</span><div class="act-m"><b>${esc(actName(i))}</b><div class="act-meta"><span class="own o-${owner(s, i)}">${OWN[owner(s, i)]}</span>${x.chg && "CW".includes(x.s) ? `<span>${x.s === "C" ? "Completed" : "Updated"} ${fmt(x.chg)}</span>` : ""}</div>${x.note ? `<p class="act-note">${esc(x.note)}</p>` : ""}${x.s === "W" ? `<div class="meter"><i style="width:${x.p}%"></i></div>` : ""}</div><div class="act-r">${sd ? chip("bad", `Stalled ${sd}d`) : stChip(x)}${x.s === "W" ? `<b>${x.p}%</b>` : ""}${isEO() ? `<button class="ibtn sm" data-a="scopeform" data-v="${i}" aria-label="Change scope of ${esc(actName(i))}">${ic("sliders")}</button>` : ""}</div></div>`; }).join("")}</div></details>`; }).join("") || empty("search", "No activities in this view", "Choose another filter.")}`;
+      <div class="acts">${show.map(i => { const x = s.acts[i], sd = stalledDays(s, i), od = overdueDays(s, i); return `<div class="act ${mk ? "tap" : ""} s-${x.s}" ${mk ? `data-a="actform" data-v="${i}" tabindex="0" role="button"` : ""}><span class="act-n">${i}</span><div class="act-m"><b>${esc(actName(i))}</b><div class="act-meta"><span class="own o-${owner(s, i)}">${OWN[owner(s, i)]}</span>${x.ps && x.pe ? `<span>Plan ${fmt(x.ps)} to ${fmt(x.pe)}</span>` : ""}${x.chg && "CW".includes(x.s) ? `<span>${x.s === "C" ? "Completed" : "Updated"} ${fmt(x.chg)}</span>` : ""}</div>${x.note ? `<p class="act-note">${esc(x.note)}</p>` : ""}${x.s === "W" ? `<div class="meter"><i style="width:${x.p}%"></i></div>` : ""}</div><div class="act-r">${od ? chip("bad", `Overdue ${od}d`) : sd ? chip("bad", `Stalled ${sd}d`) : stChip(x)}${x.s === "W" ? `<b>${x.p}%</b>` : ""}${canEdit() ? `<button class="ibtn sm" data-a="scopeform" data-v="${i}" aria-label="Change scope of ${esc(actName(i))}">${ic("sliders")}</button>` : ""}</div></div>`; }).join("")}</div></details>`; }).join("") || empty("search", "No activities in this view", "Choose another filter.")}`;
   }
-  if (R.sub === "photos") { const ph = (d.updates || []).filter(u => u.photo); body = `<section class="panel"><div class="ptitle"><h2>Photo timeline</h2>${mk ? `<button class="btn sm" data-a="photoform">${ic("camera")}Add photo</button>` : ""}</div><div class="pad">${ph.length ? `<div class="photos">${ph.map(u => photoCard({ url: u.photo.url, act: u.act, date: u.date })).join("")}</div>` : empty("image", "No photos yet", "Photos added with progress updates appear here.")}</div></section>`; }
+  if (R.sub === "gantt") body = vGantt(s);
+  if (R.sub === "photos") { const ph = (d.updates || []).filter(u => u.photo); body = `<section class="panel"><div class="ptitle"><h2>Photo timeline</h2>${mk ? `<button class="btn sm" data-a="photoform">${ic("camera")}Add photo</button>` : ""}</div><div class="pad">${ph.length ? `<div class="photos">${ph.map(u => `<div class="phw">${photoCard({ url: u.photo.url, act: u.act, date: u.date })}${canEdit() ? `<button class="ph-del" data-a="delphoto" data-v="${u.id}" aria-label="Delete photo of ${esc(actName(u.act))}, ${fmt(u.date)}">${ic("trash")}</button>` : ""}</div>`).join("")}</div>` : empty("image", "No photos yet", "Photos added with progress updates appear here.")}</div></section>`; }
   if (R.sub === "visits") { const open = (d.visits || []).find(v => !v.outAt && v.date === today() && v.uid === me.uid); body = `<section class="panel"><div class="ptitle"><h2>Site visits</h2>${mk ? (open ? `<button class="btn accent sm" data-a="checkout" data-v="${open.id}">Check out</button>` : `<button class="btn sm" data-a="checkin">${ic("pin")}Check in at site</button>`) : ""}</div>${(d.visits || []).length ? `<div class="tw"><table class="rt"><thead><tr><th>Date</th><th>By</th><th>In</th><th>Out</th><th>Location check</th><th>Present</th><th>Remarks</th></tr></thead><tbody>${d.visits.map(v => `<tr><td>${fmtY(v.date)}</td><td>${esc(v.name)}</td><td>${esc(v.inAt)}</td><td>${esc(v.outAt || "Open")}</td><td>${v.atSite === true ? chip("ok", "At site") : v.atSite === false ? chip("bad", `${v.dist} m away`) : chip("", "Not verified")}</td><td>${esc(v.present || "")}</td><td>${esc(v.remarks || "")}</td></tr>`).join("")}</tbody></table></div>` : empty("pin", "No visits recorded", "A visit is recorded when the PMC checks in at site.")}${s.lat == null ? `<p class="hint">Site coordinates are not set, so check-ins cannot be verified. The EO can add them in Edit.</p>` : ""}</section>`; }
   if (R.sub === "meas") body = `<section class="panel"><div class="ptitle"><h2>Measurements</h2>${mk ? `<button class="btn sm" data-a="measform">${ic("plus")}Add</button>` : ""}</div>${(d.meas || []).length ? `<div class="tw"><table class="rt"><thead><tr><th>BOQ item</th><th class="n">Nos</th><th class="n">L</th><th class="n">B</th><th class="n">D</th><th class="n">Measured</th><th class="n">BOQ qty</th><th>Check</th><th></th></tr></thead><tbody>${d.meas.map(m => { const q = m.n * m.l * m.b * m.d; return `<tr><td>${esc(m.item)}</td><td class="n">${m.n}</td><td class="n">${m.l}</td><td class="n">${m.b}</td><td class="n">${m.d}</td><td class="n">${q.toFixed(2)} ${esc(m.unit)}</td><td class="n">${m.boq ? m.boq + " " + esc(m.unit) : ""}</td><td>${!m.boq ? chip("", "No BOQ qty") : q > m.boq ? chip("bad", "Over by " + (q - m.boq).toFixed(2)) : chip("ok", "Within BOQ")}</td><td>${mk ? `<button class="btn ghost sm" data-a="delmeas" data-v="${m.id}">Delete</button>` : ""}</td></tr>`; }).join("")}</tbody></table></div>` : empty("inbox", "No measurements yet", "Measurements are recorded against BOQ items for contractor-scope work.")}</section>`;
   if (R.sub === "mom") body = `<section class="panel"><div class="ptitle"><h2>MoM action points</h2>${mk || isEO() ? `<button class="btn sm" data-a="momform">${ic("plus")}Add point</button>` : ""}</div>${(d.mom || []).length ? `<div class="tw"><table class="rt"><thead><tr><th>Point</th><th>Raised</th><th>Owner</th><th>Target</th><th>Status</th><th></th></tr></thead><tbody>${d.mom.map(m => `<tr><td>${esc(m.t)}</td><td>${fmt(m.date)}</td><td>${esc(m.o)}</td><td>${fmt(m.d)}${m.open && m.d && m.d < today() ? " " + chip("bad", "Overdue") : ""}</td><td>${m.open ? chip("warn", "Open") : chip("ok", "Closed")}</td><td>${m.open && (mk || isEO()) ? `<button class="btn ghost sm" data-a="closemom" data-v="${m.id}">Close</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` : empty("inbox", "No action points yet", "Points agreed with the dealer or contractor are tracked here until closed.")}</section>`;
   if (R.sub === "draw") body = `<section class="panel"><div class="ptitle"><h2>Site-specific drawings</h2></div><ul class="docs">${DRAW_SLOTS.map(([k, n]) => { const x = s.draw && s.draw[k]; return `<li><div class="doc-i ${x ? "" : "miss"}">${ic("draw")}</div><div class="doc-m"><b>${n}</b><span>${x ? `Revision R${x.rev} · ${esc(x.by)}, ${fmt(x.date)}` : "Not uploaded yet"}${x && x.hist && x.hist.length ? " · earlier: " + x.hist.map(o => `<a href="${esc(o.url)}" target="_blank" rel="noopener">R${o.rev}</a>`).join(", ") : ""}</span></div><div class="row">${x && x.url ? `<a class="btn ghost sm" href="${esc(x.url)}" target="_blank" rel="noopener">Open</a>` : ""}${mk ? `<button class="btn sm ${x ? "ghost" : ""}" data-a="drawform" data-v="${k}">${ic("upload")}${x ? "New revision" : "Upload"}</button>` : ""}</div></li>`; }).join("")}</ul></section>`;
-  if (R.sub === "log") body = `<section class="panel"><div class="ptitle"><h2>Update log</h2><span class="note">Newest first</span></div>${(d.updates || []).length ? `<div class="tw"><table class="rt"><thead><tr><th>Activity</th><th>Date</th><th>Entry</th><th>Note</th><th>By</th><th>Photo</th><th>EO review</th></tr></thead><tbody>${d.updates.map(u => `<tr><td>${u.act ? u.act + ". " + esc(actName(u.act)) : "All activities"}</td><td>${fmt(u.date)}</td><td>${esc(u.to || "Photo only")}</td><td>${esc(u.note || "")}</td><td>${esc(u.name)}</td><td>${u.photo ? `<a href="${esc(u.photo.url)}" target="_blank" rel="noopener">View</a>` : ""}</td><td>${u.chk ? chip("ok", "Reviewed by " + u.chk.by) : isEO() ? `<button class="btn ghost sm" data-a="review" data-v="${u.id}">Mark reviewed</button>` : chip("", "Not reviewed")}</td></tr>`).join("")}</tbody></table></div>` : empty("inbox", "No entries yet", "Every progress update by the PMC is listed here.")}</section>`;
+  if (R.sub === "log") body = `<section class="panel"><div class="ptitle"><h2>Update log</h2><span class="note">Newest first</span></div>${(d.updates || []).length ? `<div class="tw"><table class="rt"><thead><tr><th>Activity</th><th>Date</th><th>Entry</th><th>Note</th><th>By</th><th>Photo</th><th>EO review</th></tr></thead><tbody>${d.updates.map(u => `<tr><td>${u.act ? u.act + ". " + esc(actName(u.act)) : "All activities"}</td><td>${fmt(u.date)}</td><td>${esc(u.to || "Photo only")}</td><td>${esc(u.note || "")}</td><td>${esc(u.name)}</td><td>${u.photo ? `<a href="${esc(u.photo.url)}" target="_blank" rel="noopener">View</a>` : u.photoDeleted ? `<span class="note">Deleted by ${esc(u.photoDeleted.by)}</span>` : ""}</td><td>${u.chk ? chip("ok", "Reviewed by " + u.chk.by) : isEO() ? `<button class="btn ghost sm" data-a="review" data-v="${u.id}">Mark reviewed</button>` : chip("", "Not reviewed")}</td></tr>`).join("")}</tbody></table></div>` : empty("inbox", "No entries yet", "Every progress update by the PMC is listed here.")}</section>`;
   return head(`<button class="crumb-b d-only" data-a="back">${ic("back")}Projects</button>`, "") + `
-    <section class="hero st-${done ? "ok" : h[0] || "none"}"><div class="hero-main">${ring(o)}<div class="hero-t"><h2>${esc(s.name)}</h2><span>${esc(s.place)}${s.district ? ", " + esc(s.district) : ""}</span><div class="pc-tags"><span class="tag">${s.cat}</span>${done ? chip("ok", "Commissioned") : chip(h[0], h[1])}</div></div>${isEO() ? `<button class="btn ghost sm hero-edit" data-a="siteform" data-v="${s.id}">${ic("edit")}<span>Edit</span></button>` : ""}</div>
+    <section class="hero st-${done ? "ok" : h[0] || "none"}"><div class="hero-main">${ring(o)}<div class="hero-t"><h2>${esc(s.name)}</h2><span>${esc(s.place)}${s.district ? ", " + esc(s.district) : ""}</span><div class="pc-tags"><span class="tag">${s.cat}</span>${done ? chip("ok", "Commissioned") : chip(h[0], h[1])}</div></div>${canEdit() ? `<button class="btn ghost sm hero-edit" data-a="siteform" data-v="${s.id}">${ic("edit")}<span>Edit</span></button>` : ""}</div>
     <div class="hero-stats"><div><span>Contractor scope</span><b>${byOwner(s, "C")}%</b><div class="meter"><i style="width:${byOwner(s, "C")}%"></i></div></div><div><span>Dealer scope</span><b>${byOwner(s, "D")}%</b><div class="meter"><i style="width:${byOwner(s, "D")}%"></i></div></div><div><span>Project day</span><b>${dayNo(s)} <small>of ${s.targetDays || TARGET_DAYS}</small></b></div><div><span>Target completion</span><b>${fmtY(target) || "Not set"}</b></div></div>
     <details class="hero-more"><summary>Site details${ic("down")}</summary><div class="facts"><div><span>EO</span>${esc(s.eoName || "Not mapped")}</div><div><span>SO</span>${esc(s.soName || "Not mapped")}</div><div><span>PMC</span>${esc(s.pmcName || "Not assigned")}</div><div><span>Sales group</span>${esc(s.sg || "Not mapped")}</div><div><span>Dealer</span>${esc(s.dealer || "Not entered")}</div><div><span>Contractor</span>${esc(s.contractor || "Not entered")}</div><div><span>WBSE</span>${esc(s.wbse || "Not entered")}</div><div><span>Work started</span>${fmtY(s.startDate) || "Not entered"}</div></div></details></section>
     <section class="stepper" aria-label="Project phases">${PHASES.map((ph, pi) => { const pp = phasePct(s, pi) || 0; return `<div class="stp ${pp === 100 ? "done" : pp > 0 ? "on" : ""}"><span class="stp-d">${pp === 100 ? ic("check") : pi + 1}</span><b>${ph[0]}</b><i>${pp}%</i></div>`; }).join("")}</section>
     <div class="subtabs" role="tablist">${tabs.map(x => `<button role="tab" aria-selected="${R.sub === x[0]}" data-a="sub" data-v="${x[0]}">${x[1]}</button>`).join("")}</div>${body}`;
 }
-function actMatch(s, i, f) { const x = s.acts[i]; return !f || (f === "S" ? !!stalledDays(s, i) : x.s === f); }
+function vGantt(s) {
+  const all = ACTS.map((a, k) => k + 1), items = all.filter(i => s.acts[i].ps && s.acts[i].pe && s.acts[i].s !== "N"), t = today();
+  const planBtn = canEdit() ? `<button class="btn sm" data-a="planform">${ic("edit")}Plan timeline</button>` : "";
+  if (!items.length) return `<section class="panel"><div class="ptitle"><h2>Timeline</h2></div>${empty("visits", "No planned dates yet", "Give each activity a planned start and finish date to see the Gantt chart.", planBtn)}</section>`;
+  const target = s.startDate ? addDays(s.startDate, (s.targetDays || TARGET_DAYS) - 1) : "";
+  let lo = items.reduce((m, i) => s.acts[i].ps < m ? s.acts[i].ps : m, s.startDate || t), hi = items.reduce((m, i) => s.acts[i].pe > m ? s.acts[i].pe : m, target > t ? target : t);
+  lo = addDays(lo, -2); hi = addDays(hi, 3); const n = diff(hi, lo) + 1, off = d => diff(d, lo), mon = (8 - dOf(lo).getDay()) % 7;
+  const ticks = []; for (let k = mon; k < n; k += 7) ticks.push(`<span style="left:calc(var(--dw)*${k})">${fmt(addDays(lo, k))}</span>`);
+  const late = items.filter(i => overdueDays(s, i)).length, missing = all.filter(i => s.acts[i].s !== "N" && !(s.acts[i].ps && s.acts[i].pe)).length;
+  const rows = PHASES.map((ph, pi) => { const ids = items.filter(i => ACTS[i - 1][1] === pi); if (!ids.length) return "";
+    return `<div class="g-row g-ph"><div class="g-name">${ph[0]}</div><div class="g-track"></div></div>` + ids.map(i => { const x = s.acts[i], od = overdueDays(s, i), len = diff(x.pe, x.ps) + 1, cls = x.s === "C" ? "done" : od ? "late" : x.s === "W" ? "on" : "";
+      return `<div class="g-row"><div class="g-name" title="${esc(actName(i))}"><i>${i}</i>${esc(actName(i))}</div><div class="g-track"><div class="g-bar ${cls}" style="left:calc(var(--dw)*${off(x.ps)});width:calc(var(--dw)*${len})" title="${esc(actName(i))}: ${fmt(x.ps)} to ${fmt(x.pe)}, ${x.p}% done${od ? ", " + od + " days overdue" : ""}"><b style="width:${x.p}%"></b></div><span class="g-lab" style="left:calc(var(--dw)*${off(x.ps) + len} + 6px)">${x.p}%${od ? " · " + od + "d late" : ""}</span></div></div>`; }).join(""); }).join("");
+  return `<section class="panel"><div class="ptitle"><h2>Timeline</h2>${planBtn}</div>
+    <div class="g-sum"><span>${items.length} activities planned</span>${late ? chip("bad", `${late} overdue`) : chip("ok", "None overdue")}${missing ? `<span class="note">${missing} without planned dates</span>` : ""}</div>
+    <div class="gantt" role="img" aria-label="Gantt chart of ${items.length} planned activities, ${late} overdue. The same dates are listed on the Activities tab."><div class="g-in" style="--n:${n};--mo:${mon}">
+      <div class="g-row g-head"><div class="g-name">Activity</div><div class="g-track g-ticks">${ticks.join("")}</div></div>${rows}
+      ${t >= lo && t <= hi ? `<div class="g-today" style="left:calc(var(--nw) + var(--dw)*${off(t)} + var(--dw)/2)"><span>Today</span></div>` : ""}${target && target >= lo && target <= hi ? `<div class="g-today tgt" style="left:calc(var(--nw) + var(--dw)*${off(target)} + var(--dw))"><span>Target</span></div>` : ""}
+    </div></div>
+    <div class="legend"><span><i class="g-k"></i>Planned</span><span><i class="g-k on"></i>Progress</span><span><i class="g-k done"></i>Completed</span><span><i class="g-k late"></i>Overdue</span></div></section>`;
+}
+function planForm() {
+  const s = site(R.siteId);
+  dlg("Plan timeline: " + s.name, `<p class="note">Set a planned start and finish date for each activity. Use the phase row to fill a whole phase, then adjust single rows. Leave both dates empty for an activity you do not want on the chart.</p>
+    <div class="tw plan-tbl"><table><thead><tr><th class="n">No</th><th>Activity</th><th>Planned start</th><th>Planned finish</th></tr></thead><tbody>${PHASES.map((ph, pi) => `<tr class="pl-ph"><td></td><td><b>${ph[0]}</b></td><td><input type="date" id="pp-s-${pi}" aria-label="${ph[0]} start"></td><td><div class="row"><input type="date" id="pp-e-${pi}" aria-label="${ph[0]} finish"><button type="button" class="btn ghost sm" data-a="planfill" data-v="${pi}">Apply to phase</button></div></td></tr>` + ACTS.map((a, k) => { if (a[1] !== pi) return ""; const i = k + 1, x = s.acts[i]; return `<tr><td class="n">${i}</td><td>${esc(a[0])}${x.s === "N" ? ' <span class="note">(not applicable)</span>' : ""}</td><td><input type="date" name="ps_${i}" id="pl-s-${i}" data-ph="${pi}" value="${esc(x.ps)}" aria-label="Planned start ${i}"></td><td><input type="date" name="pe_${i}" id="pl-e-${i}" data-ph="${pi}" value="${esc(x.pe)}" aria-label="Planned finish ${i}"></td></tr>`; }).join("")).join("")}</tbody></table></div>`, "plan", "Save timeline", true);
+}
+function actMatch(s, i, f) { const x = s.acts[i]; return !f || (f === "S" ? !!stalledDays(s, i) : f === "O" ? !!overdueDays(s, i) : x.s === f); }
 
 function vVisits() {
   const ws = R.week, days = [0, 1, 2, 3, 4, 5, 6].map(k => addDays(ws, k)), act = sites.filter(s => s.status !== "commissioned");
@@ -276,7 +306,7 @@ function vLetters() {
 function vUsers() {
   const list = users.filter(u => u.role !== "removed").sort((a, b) => a.name.localeCompare(b.name));
   return head("", `<button class="btn d-only" data-a="userform">${ic("plus")}Add user</button>`, `<button class="fab" data-a="userform" aria-label="Add user">${ic("plus")}<span>Add user</span></button>`) + `<section class="panel"><ul class="people">${list.map(u => { const st = sites.filter(s => s.pmcUid === u.uid || s.eoUid === u.uid); return `<li><span class="avatar">${esc(initials(u.name))}</span><div class="doc-m"><b>${esc(u.name)}${u.uid === me.uid ? " <span class='note'>(you)</span>" : ""}</b><span>${esc(u.userId || "")}${st.length ? " · " + st.map(s => esc(s.name)).join(", ") : ""}</span></div>${u.uid === me.uid ? `<span class="role r-${u.role}">${ROLE[u.role]}</span>` : `<select class="role-sel r-${u.role}" data-c="role" data-v="${u.uid}" aria-label="Role for ${esc(u.name)}">${Object.keys(ROLE).map(r => opt(r, ROLE[r], u.role)).join("")}</select>`}</li>`; }).join("")}</ul></section>
-  <p class="hint">You create every login here and hand the User ID and starting password to the person. Set a role to No access to block a login. A PMC sees only the sites assigned to them.</p>`;
+  <p class="hint">You create every login here and hand the User ID and starting password to the person. Set a role to No access to block a login. Every PMC can create projects and update any project.</p>`;
 }
 
 /* ---------- shell ---------- */
@@ -325,8 +355,9 @@ function actForm(i) {
     <label>Status<select name="s">${opt("Y", "Yet to start", x.s)}${opt("W", "In progress", x.s)}${opt("C", "Completed", x.s)}${opt("N", "Not applicable", x.s)}</select></label>
     <label>Percent done (when in progress)<input name="p" type="number" min="1" max="99" value="${x.s === "W" ? x.p : ""}"></label></div>
     <label>Pending item or remark<input name="note" value="${esc(x.note)}" placeholder="e.g. chamber cover pending"></label>
-    <label>Photo<input name="file" type="file" accept="image/*" capture="environment"></label>
-    <p class="note">A photo is required to mark an activity Completed. Only entries with a photo count towards the ${UPDATE_DAYS_PER_WEEK}-day rule.</p>`, "act", "Save update");
+    <div class="form"><label>Planned start<input name="ps" type="date" value="${esc(x.ps)}"></label><label>Planned finish<input name="pe" type="date" value="${esc(x.pe)}"></label></div>
+    <label>Photo (optional)<input name="file" type="file" accept="image/*" capture="environment"></label>
+    <p class="note">${UPDATE_DAY_NEEDS_PHOTO ? `A photo is optional, but only entries with a photo count towards the ${UPDATE_DAYS_PER_WEEK}-day rule.` : `A photo is optional. Any saved update counts towards the ${UPDATE_DAYS_PER_WEEK}-day rule.`}</p>`, "act", "Save update");
 }
 function scopeForm(i) {
   const s = site(R.siteId), x = s.acts[i];
@@ -351,12 +382,19 @@ function openForm() {
 }
 
 /* ---------- actions ---------- */
-async function saveEntry(s, i, next, note, file) {
+async function saveEntry(s, i, next, note, file, plan) {
   const prev = s.acts[i], t = today(), pos = file ? await getPos() : null; let photo = null;
   if (file) { const blob = await compress(file, `${s.name} | ${actName(i)} | ${fmtY(t)} ${hhmm()}${pos ? ` | ${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}` : ""}`); photo = await store.upload(`sites/${s.id}/photos/${t}/${Date.now()}_${i}.jpg`, blob); }
   const changed = next && (next.s !== prev.s || next.p !== prev.p), patch = { lastUpdate: new Date().toISOString() };
-  if (next) { const a = { ...prev, s: next.s, p: next.p, chg: changed ? t : (prev.chg || t) }; if (note) a.note = note; else delete a.note; patch["acts." + i] = a; }
-  if (photo) { patch.updDays = uniq([...(s.updDays || []), t]).slice(-90); patch.lastPhotos = [{ url: photo.url, act: i, date: t }, ...(s.lastPhotos || [])].slice(0, 4); }
+  if (next) {
+    const a = { ...prev, s: next.s, p: next.p, chg: changed ? t : (prev.chg || t) }; if (note) a.note = note; else delete a.note;
+    if ("WC".includes(a.s)) { if (!a.as) a.as = t; } else delete a.as; // actual start: first day it left "not started"
+    if (a.s === "C") { if (!a.ae) a.ae = t; } else delete a.ae;       // actual finish: day it was marked Completed
+    if (plan) { if (plan.ps && plan.pe) { a.ps = plan.ps; a.pe = plan.pe; } else { delete a.ps; delete a.pe; } }
+    patch["acts." + i] = a;
+  }
+  if (photo || (next && !UPDATE_DAY_NEEDS_PHOTO)) patch.updDays = uniq([...(s.updDays || []), t]).slice(-90);
+  if (photo) { patch.lastPhotos = [{ url: photo.url, act: i, date: t }, ...(s.lastPhotos || [])].slice(0, 4); }
   await store.patchSite(s.id, patch);
   const u = { ts: new Date().toISOString(), date: t, uid: me.uid, name: me.name, act: i, note: note || "" };
   if (next) u.to = next.s === "C" ? "Completed" : next.s === "W" ? `In progress ${next.p}%` : next.s === "N" ? "Not applicable" : "Yet to start";
@@ -456,12 +494,13 @@ const F = {
     const s = site(R.siteId), i = +f.i, prev = s.acts[i], file = files.file;
     const p = f.s === "C" ? 100 : f.s === "W" ? Math.round(+f.p) : 0;
     if (f.s === "W" && !(p >= 1 && p <= 99)) throw new Error("Enter percent done between 1 and 99");
-    if (f.s === "C" && prev.s !== "C" && !file) throw new Error("Add a photo to mark this activity Completed");
-    await saveEntry(s, i, { s: f.s, p }, f.note.trim(), file); closeDlg(); await refresh(); toast("Update saved");
+    if ((f.ps || f.pe) && !(f.ps && f.pe)) throw new Error("Enter both planned dates, or leave both empty");
+    if (f.ps && f.pe < f.ps) throw new Error("Planned finish cannot be before planned start");
+    await saveEntry(s, i, { s: f.s, p }, f.note.trim(), file, { ps: f.ps, pe: f.pe }); closeDlg(); await refresh(); toast("Update saved");
   }),
   opening: f => run(async () => {
     const s = site(R.siteId), t = today(), acts = {}; let c = 0;
-    ACTS.forEach((a, k) => { const i = k + 1, prev = s.acts[i], st = f["s_" + i], p = st === "C" ? 100 : st === "W" ? Math.min(99, Math.max(1, Math.round(+f["p_" + i]) || 50)) : 0, x = { s: st, p, chg: st !== prev.s || p !== prev.p ? t : (prev.chg || t) }; if (prev.own) x.own = prev.own; const note = (f["n_" + i] || "").trim(); if (note) x.note = note; if (st === "C") c++; acts[i] = x; });
+    ACTS.forEach((a, k) => { const i = k + 1, prev = s.acts[i], st = f["s_" + i], p = st === "C" ? 100 : st === "W" ? Math.min(99, Math.max(1, Math.round(+f["p_" + i]) || 50)) : 0, x = { s: st, p, chg: st !== prev.s || p !== prev.p ? t : (prev.chg || t) }; if (prev.own) x.own = prev.own; if (prev.ps) { x.ps = prev.ps; x.pe = prev.pe; } const note = (f["n_" + i] || "").trim(); if (note) x.note = note; if (st === "C") c++; acts[i] = x; });
     await store.patchSite(s.id, { acts, lastUpdate: new Date().toISOString() });
     await store.subAdd(s.id, "updates", { ts: new Date().toISOString(), date: t, uid: me.uid, name: me.name, act: 0, to: `Opening status entered: ${c} of ${ACTS.length} completed`, note: "" });
     closeDlg(); await refresh(); toast("Opening status saved");
@@ -492,13 +531,34 @@ Object.assign(H, {
   viewletter: v => navTo({ letter: v }),
   letterback: () => navTo({ letter: null }),
   more: () => sheet("", [["tab", "draw", "Drawings", R.tab === "draw" ? "on" : "", "draw"], ["tab", "letters", "Letters", R.tab === "letters" ? "on" : "", "letters"]].concat(isAdmin() ? [["tab", "users", "Users", R.tab === "users" ? "on" : "", "users"]] : [])),
-  profile: () => sheet(`<span class="avatar">${esc(initials(me.name))}</span><div><b>${esc(me.name)}</b><span>${ROLE[me.role]}${me.userId ? " · " + esc(me.userId) : ""}</span></div>`, [["pwform", "key", "Change password"]].concat(installEvt ? [["install", "download", "Install app"]] : [], [["logout", "logout", "Sign out", "danger"]])),
+  profile: () => sheet(`<span class="avatar">${esc(initials(me.name))}</span><div><b>${esc(me.name)}</b><span>${ROLE[me.role]}${me.userId ? " · " + esc(me.userId) : ""} · v${APP_VERSION}</span></div>`, [["pwform", "key", "Change password"]].concat(installEvt ? [["install", "download", "Install app"]] : [], [["logout", "logout", "Sign out", "danger"]])),
   logout: () => { $("ovl").innerHTML = ""; run(() => store.logout()); },
   navtoggle: () => { navMini = !navMini; try { localStorage.setItem("nro-nav-mini", navMini ? "1" : "0"); } catch (e) { } render(); },
   fstat: v => { R.fs = v; render(); },
   af: v => { R.af = v; render(); },
   clearf: () => { R.q = ""; R.fs = ""; R.fc = ""; R.fEO = ""; render(); },
   delmeas: v => confirmDlg("Delete measurement?", "This measurement will be removed from the site record. This cannot be undone.", "Delete", async () => { await store.subDel(R.siteId, "meas", v); await refresh(); toast("Measurement deleted"); })
+});
+Object.assign(H, {
+  planform: () => planForm(),
+  planfill: v => { const ps = $("pp-s-" + v).value, pe = $("pp-e-" + v).value; if (!ps || !pe) return toast("Enter both dates in the phase row first", true); if (pe < ps) return toast("Finish cannot be before start", true); document.querySelectorAll(`#ovl input[data-ph="${v}"]`).forEach(el => { el.value = el.name.startsWith("ps_") ? ps : pe; }); },
+  delphoto: v => confirmDlg("Delete this photo?", "The photo is removed from the site record and from storage. The update entry stays in the log. This cannot be undone.", "Delete photo", async () => {
+    const s = site(R.siteId), u = ((sub[s.id] || {}).updates || []).find(x => x.id === v); if (!u || !u.photo) return;
+    await store.removeFile(u.photo.path);
+    await store.subPatch(s.id, "updates", v, { photo: DEL, photoDeleted: { by: me.name, on: today() } });
+    await store.patchSite(s.id, { lastPhotos: (s.lastPhotos || []).filter(p => p.url !== u.photo.url) });
+    await refresh(); toast("Photo deleted");
+  })
+});
+F.plan = f => run(async () => {
+  const s = site(R.siteId), patch = {}; let n = 0;
+  for (let i = 1; i <= ACTS.length; i++) { const ps = f["ps_" + i], pe = f["pe_" + i], x = { ...s.acts[i] };
+    if ((ps || pe) && !(ps && pe)) throw new Error(`Activity ${i}: enter both dates, or leave both empty`);
+    if (ps && pe < ps) throw new Error(`Activity ${i}: finish cannot be before start`);
+    if ((x.ps || "") === ps && (x.pe || "") === pe) continue;
+    if (ps) { x.ps = ps; x.pe = pe; } else { delete x.ps; delete x.pe; } patch["acts." + i] = x; n++; }
+  if (n) await store.patchSite(s.id, patch);
+  closeDlg(); R.sub = "gantt"; await refresh(); toast(n ? `Timeline saved for ${n} activities` : "No changes");
 });
 Object.assign(C, { fcat: v => { R.fc = v; render(); }, sort: v => { R.sort = v; render(); }, feo: v => { R.fEO = v; render(); } });
 F.confirm = () => { const fn = confirmFn; confirmFn = null; closeDlg(); if (fn) run(fn); };
@@ -527,7 +587,12 @@ document.addEventListener("submit", e => {
 });
 
 /* ---------- start ---------- */
-if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("sw.js").catch(() => { });
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  // When a new version takes over from an older one, reload once so the new screens show straight away.
+  const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => r.update()).catch(() => { });
+}
 (async () => {
   try { store = await initStore(); } catch (e) { $("full").hidden = false; $("full").innerHTML = `<div class="auth"><div class="dlg"><div class="pad"><h2>Could not connect</h2><p>${esc(e.message)}</p><p class="note">Check firebase-config.js and your network, then reload.</p></div></div></div>`; return; }
   store.onAuth(async p => { me = p; users = []; if (me && me.role !== "pending") { R.tab = "dash"; R.siteId = null; try { history.replaceState({ r: snap() }, ""); } catch (e) { } await run(refresh); } else render(); });

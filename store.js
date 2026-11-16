@@ -1,6 +1,6 @@
 // Data layer. Uses Firebase when firebase-config.js is filled in, otherwise a local demo store.
 import { firebaseConfig } from "./firebase-config.js";
-import { ACTS, ID_DOMAIN } from "./data.js";
+import { ACTS, ID_DOMAIN } from "./data.js?v=2.4";
 
 export const DEMO = !firebaseConfig.apiKey;
 export const DEL = { __del: true }; // pass as a value in a patch to delete that field
@@ -40,10 +40,7 @@ async function firebaseStore() {
     logout: () => A.signOut(auth),
     listUsers: async () => rows(await F.getDocs(F.collection(db, "users"))).map(u => ({ uid: u.id, ...u })),
     setUser: (uid, patch) => F.updateDoc(F.doc(db, "users", uid), patch),
-    async listSites(me) {
-      const c = F.collection(db, "sites");
-      return rows(await F.getDocs(me.role === "pmc" ? F.query(c, F.where("pmcUid", "==", me.uid)) : c));
-    },
+    listSites: async () => rows(await F.getDocs(F.collection(db, "sites"))),
     createSite: async data => (await F.addDoc(F.collection(db, "sites"), data)).id,
     patchSite: (id, patch) => F.updateDoc(F.doc(db, "sites", id), fix(patch)),
     subList: async (sid, name, n = 200) => rows(await F.getDocs(F.query(F.collection(db, "sites", sid, name), F.orderBy("ts", "desc"), F.limit(n)))),
@@ -57,7 +54,8 @@ async function firebaseStore() {
       const r = S.ref(st, path);
       await S.uploadBytes(r, blob, { contentType: blob.type });
       return { path, url: await S.getDownloadURL(r) };
-    }
+    },
+    removeFile: path => path ? S.deleteObject(S.ref(st, path)).catch(e => { if (e.code !== "storage/object-not-found") throw e; }) : Promise.resolve()
   };
 }
 
@@ -98,7 +96,7 @@ function localStore() {
     async logout() { db.session = null; save(); cb(null); },
     async listUsers() { return Object.entries(db.users).map(([k, u]) => ({ uid: k, ...u })); },
     async setUser(id, patch) { Object.assign(db.users[id], patch); save(); },
-    async listSites(m) { return clone(Object.entries(db.sites).map(([id, s]) => ({ id, ...s })).filter(s => m.role !== "pmc" || s.pmcUid === m.uid)); },
+    async listSites() { return clone(Object.entries(db.sites).map(([id, s]) => ({ id, ...s }))); },
     async createSite(data) { const id = uid(); db.sites[id] = clone(data); save(); return id; },
     async patchSite(id, patch) { apply(db.sites[id], clone(patch)); Object.entries(patch).forEach(([k, v]) => { if (v === DEL) setPath(db.sites[id], k, DEL); }); save(); },
     async subList(sid, name, n = 200) { return clone(byTs(sub(sid, name)).slice(0, n)); },
@@ -112,6 +110,7 @@ function localStore() {
       if (blob.type.startsWith("image/")) return { path, url: await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(blob); }) };
       return { path, url: URL.createObjectURL(blob) };
     },
+    async removeFile() { },
     reset() { localStorage.removeItem(KEY); location.reload(); }
   };
 }
