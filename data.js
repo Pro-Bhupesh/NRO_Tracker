@@ -14,4 +14,30 @@ export const UPDATE_DAYS_PER_WEEK = 3;
 export const UPDATE_DAY_NEEDS_PHOTO = true; // true: only an update with a photo counts as an update day; false: any saved update counts
 export const SITE_RADIUS_M = 300;   // check-in within this distance of the site counts as "at site"
 export const ID_DOMAIN = "nro-tracker.local"; // User IDs are stored in Firebase Auth as <id>@<this domain>; do not change after users exist
-export const APP_VERSION = "2.4"; // shown on the sign-in page and in the account menu, so you can tell which version a device is running
+export const APP_VERSION = "2.5"; // shown on the sign-in page and in the account menu, so you can tell which version a device is running
+// Bar chart (Gantt) for NRO construction: [work, standard days, standard start day counted from the work start date, enclosures]
+// Standard 60-day plan as per the BPCL bar chart. Each site can change its own dates on the Timeline tab.
+export const GANTT = [
+  ["Initial levels & finalisation of FDL", 1, 1, "Level layout"],
+  ["Earth pit (HD) tank works", 10, 2, "Photos"],
+  ["Canopy foundation", 7, 2, "Photos, cube test report"],
+  ["Culvert (drain)", 18, 2, "Photos, test report"],
+  ["Sales building", 55, 2, "Photos, test report"],
+  ["Construction of pump island", 4, 31, ""],
+  ["PVC pipe laying (electrical & rain water)", 4, 31, "Testing certificate"],
+  ["MPD & STP installation", 3, 34, ""],
+  ["Product pipeline works", 5, 36, "Photos, testing certificate"],
+  ["Yard light", 4, 16, "Photos"],
+  ["BM inspection chambers", 4, 36, ""],
+  ["Driveway WBM / WMM", 15, 15, "Photos"],
+  ["Kerb wall, buffer & monolith foundation", 7, 31, "Photos"],
+  ["Laying cables", 3, 39, "Testing certificate"],
+  ["Approach cutting & WBM / WMM", 8, 42, ""],
+  ["Pump island finishing", 3, 42, ""],
+  ["Panel board commissioning", 4, 45, ""],
+  ["Driveway CC pavers", 10, 40, ""],
+  ["Approach finishing", 8, 46, ""],
+  ["Painting work", 8, 50, ""],
+  ["Site clean", 2, 59, ""]
+];
+export const GANTT_DAYS = 60;

@@ -1,6 +1,6 @@
 // Data layer. Uses Firebase when firebase-config.js is filled in, otherwise a local demo store.
 import { firebaseConfig } from "./firebase-config.js";
-import { ACTS, ID_DOMAIN } from "./data.js?v=2.4";
+import { ACTS, ID_DOMAIN } from "./data.js?v=2.5";
 
 export const DEMO = !firebaseConfig.apiKey;
 export const DEL = { __del: true }; // pass as a value in a patch to delete that field

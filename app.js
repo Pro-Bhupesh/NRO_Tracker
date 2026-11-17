@@ -1,5 +1,6 @@
-import { PHASES, OWN, ACTS, SALES_GROUPS, DISTRICTS, DRAW_SLOTS, TERRITORY, LETTER_PREFIX, TARGET_DAYS, STALL_DAYS, UPDATE_DAYS_PER_WEEK, SITE_RADIUS_M, APP_VERSION, UPDATE_DAY_NEEDS_PHOTO } from "./data.js?v=2.4";
-import { initStore, DEMO, DEL, blankActs } from "./store.js?v=2.4";
+import { PHASES, OWN, ACTS, SALES_GROUPS, DISTRICTS, DRAW_SLOTS, TERRITORY, LETTER_PREFIX, TARGET_DAYS, STALL_DAYS, UPDATE_DAYS_PER_WEEK, SITE_RADIUS_M, APP_VERSION, UPDATE_DAY_NEEDS_PHOTO, GANTT, GANTT_DAYS } from "./data.js?v=2.5";
+import { DRAW_LIB, DRAW_BASE, ACT_LIB } from "./drawings.js?v=2.5";
+import { initStore, DEMO, DEL, blankActs } from "./store.js?v=2.5";
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -20,7 +21,7 @@ const ERR = { "auth/invalid-credential": "Wrong User ID or password", "auth/wron
 /* ---------- state ---------- */
 let store, me = null, sites = [], users = [], letters = [], std = [], visitsAll = [];
 const sub = {}; // per-site loaded sub-collections
-const R = { tab: "dash", siteId: null, sub: "acts", week: weekStart(today()), fEO: "", letter: null, q: "", fs: "", fc: "", sort: "name", af: "" };
+const R = { tab: "dash", siteId: null, sub: "acts", week: weekStart(today()), fEO: "", letter: null, q: "", fs: "", fc: "", sort: "name", af: "", dp: [], dq: "" };
 const L = { siteId: "", act: 0, type: "Delay", obs: "" };
 
 const isAdmin = () => me.role === "admin";
@@ -38,7 +39,8 @@ function byOwner(s, k) { let sum = 0, n = 0; ACTS.forEach((a, j) => { const x = 
 const dayNo = s => s.startDate ? Math.max(1, diff(today(), s.startDate) + 1) : 0;
 function health(s) { if (!s.startDate) return ["", "Not started"]; const gap = overall(s) - Math.min(100, Math.round(dayNo(s) / (s.targetDays || TARGET_DAYS) * 100)); return gap < -20 ? ["bad", "Delayed"] : gap < -5 ? ["warn", "At risk"] : ["ok", "On track"]; }
 const stalledDays = (s, i) => { const x = s.acts[i]; return x.s === "W" && x.chg && diff(today(), x.chg) >= STALL_DAYS ? diff(today(), x.chg) : 0; };
-const overdueDays = (s, i) => { const x = s.acts[i]; return x.pe && !"CN".includes(x.s) && x.pe < today() ? diff(today(), x.pe) : 0; };
+const stdSched = start => Object.fromEntries(GANTT.map((g, k) => [k + 1, { ps: addDays(start, g[2] - 1), pe: addDays(start, g[2] + g[1] - 2), p: 0 }]));
+const gOver = (s, n) => { const x = (s.sched || {})[n]; return x && x.pe && (x.p || 0) < 100 && x.pe < today() ? diff(today(), x.pe) : 0; };
 const stalledList = s => ACTS.map((a, k) => k + 1).filter(i => stalledDays(s, i));
 const updInWeek = (s, ws) => uniq((s.updDays || []).filter(d => d >= ws && d <= addDays(ws, 6)));
 const drawCount = s => DRAW_SLOTS.filter(d => s.draw && s.draw[d[0]]).length;
@@ -60,7 +62,7 @@ const ICONS = {
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>', download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   check: '<path d="M20 6 9 17l-5-5"/>', edit: '<path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/>', upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>', inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
-  x: '<path d="M18 6 6 18M6 6l12 12"/>', trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14M10 11v6M14 11v6"/>', sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/>', clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'
+  x: '<path d="M18 6 6 18M6 6l12 12"/>', folder: '<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9l-.8-1.2A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/>', trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14M10 11v6M14 11v6"/>', sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M2 14h4M10 8h4M18 16h4"/>', clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'
 };
 const ic = n => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
 const chip = (c, t) => `<span class="chip ${c ? "c-" + c : ""}">${esc(t)}</span>`;
@@ -153,7 +155,7 @@ function attention() {
   let ex = [];const ws = weekStart(today());
   sites.filter(s => s.status !== "commissioned").forEach(s => {
     stalledList(s).forEach(i => ex.push(["bad", s, `${actName(i)}: no progress for ${stalledDays(s, i)} days (${OWN[owner(s, i)]})`]));
-    ACTS.forEach((x, k) => { const od = overdueDays(s, k + 1); if (od) ex.push(["bad", s, `${x[0]}: ${od} days past planned finish (${OWN[owner(s, k + 1)]})`]); });
+    GANTT.forEach((g, k) => { const od = gOver(s, k + 1); if (od) ex.push(["bad", s, `${g[0]}: ${od} days past planned finish`]); });
     Object.keys(s.plan || {}).filter(d => d >= addDays(today(), -14) && planState(s, d) === "missed").forEach(d => ex.push(["bad", s, `Planned visit on ${fmt(d)} was missed`]));
     const u = updInWeek(s, ws).length; if (u < UPDATE_DAYS_PER_WEEK) ex.push(["warn", s, `${u} of ${UPDATE_DAYS_PER_WEEK} update days this week`]);
     DRAW_SLOTS.forEach(d => { if (!(s.draw && s.draw[d[0]])) ex.push(["warn", s, `${d[1]} not uploaded`]); });
@@ -214,16 +216,16 @@ function vSiteList() { return head("", newBtn(), newFab()) + `${projectTools()}<
 
 function vSite() {
   const s = site(R.siteId), mk = canMake(s), h = health(s), d = sub[s.id] || {}, o = overall(s), done = s.status === "commissioned";
-  const tabs = [["acts", "Activities"], ["gantt", "Timeline"], ["photos", "Photos"], ["visits", "Visits"], ["meas", "Measurements"], ["mom", "MoM"], ["draw", `Drawings ${drawCount(s)}/${DRAW_SLOTS.length}`], ["log", "Update log"]];
+  const tabs = [["acts", "Activities"], ["gantt", "Bar chart"], ["photos", "Photos"], ["visits", "Visits"], ["meas", "Measurements"], ["mom", "MoM"], ["draw", `Drawings ${drawCount(s)}/${DRAW_SLOTS.length}`], ["log", "Update log"]];
   const target = s.startDate ? addDays(s.startDate, (s.targetDays || TARGET_DAYS) - 1) : "";
   let body = "";
   if (R.sub === "acts") {
     const all = ACTS.map((a, k) => k + 1), cnt = f => all.filter(i => actMatch(s, i, f)).length;
-    body = `<div class="acts-tools">${fchips("af", R.af, [["", "All", all.length], ["W", "In progress", cnt("W")], ["Y", "Not started", cnt("Y")], ["C", "Completed", cnt("C")], ["S", "Stalled", cnt("S")], ["O", "Overdue", cnt("O")]])}${canEdit() ? `<div class="row"><button class="btn ghost sm" data-a="planform">Plan timeline</button><button class="btn ghost sm" data-a="openform">Enter opening status</button></div>` : ""}</div>
+    body = `<div class="acts-tools">${fchips("af", R.af, [["", "All", all.length], ["W", "In progress", cnt("W")], ["Y", "Not started", cnt("Y")], ["C", "Completed", cnt("C")], ["S", "Stalled", cnt("S")]])}${canEdit() ? `<button class="btn ghost sm" data-a="openform">Enter opening status</button>` : ""}</div>
     ${PHASES.map((ph, pi) => { const ids = all.filter(i => ACTS[i - 1][1] === pi), show = ids.filter(i => actMatch(s, i, R.af)), pp = phasePct(s, pi) || 0, dn = ids.filter(i => s.acts[i].s === "C").length, na = ids.filter(i => s.acts[i].s === "N").length;
       if (!show.length) return "";
       return `<details class="phase" ${pp < 100 || R.af ? "open" : ""}><summary><span class="ph-n ${pp === 100 ? "done" : ""}">${pp === 100 ? ic("check") : pi + 1}</span><div class="ph-t"><b>${ph[0]}</b><span>${dn} of ${ids.length - na} completed</span></div>${pm(pp)}${ic("down")}</summary>
-      <div class="acts">${show.map(i => { const x = s.acts[i], sd = stalledDays(s, i), od = overdueDays(s, i); return `<div class="act ${mk ? "tap" : ""} s-${x.s}" ${mk ? `data-a="actform" data-v="${i}" tabindex="0" role="button"` : ""}><span class="act-n">${i}</span><div class="act-m"><b>${esc(actName(i))}</b><div class="act-meta"><span class="own o-${owner(s, i)}">${OWN[owner(s, i)]}</span>${x.ps && x.pe ? `<span>Plan ${fmt(x.ps)} to ${fmt(x.pe)}</span>` : ""}${x.chg && "CW".includes(x.s) ? `<span>${x.s === "C" ? "Completed" : "Updated"} ${fmt(x.chg)}</span>` : ""}</div>${x.note ? `<p class="act-note">${esc(x.note)}</p>` : ""}${x.s === "W" ? `<div class="meter"><i style="width:${x.p}%"></i></div>` : ""}</div><div class="act-r">${od ? chip("bad", `Overdue ${od}d`) : sd ? chip("bad", `Stalled ${sd}d`) : stChip(x)}${x.s === "W" ? `<b>${x.p}%</b>` : ""}${canEdit() ? `<button class="ibtn sm" data-a="scopeform" data-v="${i}" aria-label="Change scope of ${esc(actName(i))}">${ic("sliders")}</button>` : ""}</div></div>`; }).join("")}</div></details>`; }).join("") || empty("search", "No activities in this view", "Choose another filter.")}`;
+      <div class="acts">${show.map(i => { const x = s.acts[i], sd = stalledDays(s, i); return `<div class="act ${mk ? "tap" : ""} s-${x.s}" ${mk ? `data-a="actform" data-v="${i}" tabindex="0" role="button"` : ""}><span class="act-n">${i}</span><div class="act-m"><b>${esc(actName(i))}</b><div class="act-meta"><span class="own o-${owner(s, i)}">${OWN[owner(s, i)]}</span>${x.chg && "CW".includes(x.s) ? `<span>${x.s === "C" ? "Completed" : "Updated"} ${fmt(x.chg)}</span>` : ""}</div>${x.note ? `<p class="act-note">${esc(x.note)}</p>` : ""}${x.s === "W" ? `<div class="meter"><i style="width:${x.p}%"></i></div>` : ""}</div><div class="act-r">${sd ? chip("bad", `Stalled ${sd}d`) : stChip(x)}${x.s === "W" ? `<b>${x.p}%</b>` : ""}${canEdit() ? `<button class="ibtn sm" data-a="scopeform" data-v="${i}" aria-label="Change scope of ${esc(actName(i))}">${ic("sliders")}</button>` : ""}</div></div>`; }).join("")}</div></details>`; }).join("") || empty("search", "No activities in this view", "Choose another filter.")}`;
   }
   if (R.sub === "gantt") body = vGantt(s);
   if (R.sub === "photos") { const ph = (d.updates || []).filter(u => u.photo); body = `<section class="panel"><div class="ptitle"><h2>Photo timeline</h2>${mk ? `<button class="btn sm" data-a="photoform">${ic("camera")}Add photo</button>` : ""}</div><div class="pad">${ph.length ? `<div class="photos">${ph.map(u => `<div class="phw">${photoCard({ url: u.photo.url, act: u.act, date: u.date })}${canEdit() ? `<button class="ph-del" data-a="delphoto" data-v="${u.id}" aria-label="Delete photo of ${esc(actName(u.act))}, ${fmt(u.date)}">${ic("trash")}</button>` : ""}</div>`).join("")}</div>` : empty("image", "No photos yet", "Photos added with progress updates appear here.")}</div></section>`; }
@@ -240,31 +242,39 @@ function vSite() {
     <div class="subtabs" role="tablist">${tabs.map(x => `<button role="tab" aria-selected="${R.sub === x[0]}" data-a="sub" data-v="${x[0]}">${x[1]}</button>`).join("")}</div>${body}`;
 }
 function vGantt(s) {
-  const all = ACTS.map((a, k) => k + 1), items = all.filter(i => s.acts[i].ps && s.acts[i].pe && s.acts[i].s !== "N"), t = today();
-  const planBtn = canEdit() ? `<button class="btn sm" data-a="planform">${ic("edit")}Plan timeline</button>` : "";
-  if (!items.length) return `<section class="panel"><div class="ptitle"><h2>Timeline</h2></div>${empty("visits", "No planned dates yet", "Give each activity a planned start and finish date to see the Gantt chart.", planBtn)}</section>`;
+  const sc = s.sched || {}, ed = canEdit(), t = today(), items = GANTT.map((g, k) => k + 1).filter(n => sc[n] && sc[n].ps && sc[n].pe);
+  const btns = ed ? `<div class="row">${s.startDate ? `<button class="btn ghost sm" data-a="stdsched">Standard ${GANTT_DAYS}-day plan</button>` : ""}<button class="btn sm" data-a="planform">${ic("edit")}Edit plan</button></div>` : "";
+  if (!items.length) return `<section class="panel"><div class="ptitle"><h2>Bar chart</h2></div>${empty("visits", "No schedule yet", s.startDate ? `Fill the standard ${GANTT_DAYS}-day bar chart from the work start date, ${fmtY(s.startDate)}, then adjust any dates.` : "Set the work start date with Edit to use the standard plan, or enter the dates yourself.", btns)}</section>`;
   const target = s.startDate ? addDays(s.startDate, (s.targetDays || TARGET_DAYS) - 1) : "";
-  let lo = items.reduce((m, i) => s.acts[i].ps < m ? s.acts[i].ps : m, s.startDate || t), hi = items.reduce((m, i) => s.acts[i].pe > m ? s.acts[i].pe : m, target > t ? target : t);
-  lo = addDays(lo, -2); hi = addDays(hi, 3); const n = diff(hi, lo) + 1, off = d => diff(d, lo), mon = (8 - dOf(lo).getDay()) % 7;
-  const ticks = []; for (let k = mon; k < n; k += 7) ticks.push(`<span style="left:calc(var(--dw)*${k})">${fmt(addDays(lo, k))}</span>`);
-  const late = items.filter(i => overdueDays(s, i)).length, missing = all.filter(i => s.acts[i].s !== "N" && !(s.acts[i].ps && s.acts[i].pe)).length;
-  const rows = PHASES.map((ph, pi) => { const ids = items.filter(i => ACTS[i - 1][1] === pi); if (!ids.length) return "";
-    return `<div class="g-row g-ph"><div class="g-name">${ph[0]}</div><div class="g-track"></div></div>` + ids.map(i => { const x = s.acts[i], od = overdueDays(s, i), len = diff(x.pe, x.ps) + 1, cls = x.s === "C" ? "done" : od ? "late" : x.s === "W" ? "on" : "";
-      return `<div class="g-row"><div class="g-name" title="${esc(actName(i))}"><i>${i}</i>${esc(actName(i))}</div><div class="g-track"><div class="g-bar ${cls}" style="left:calc(var(--dw)*${off(x.ps)});width:calc(var(--dw)*${len})" title="${esc(actName(i))}: ${fmt(x.ps)} to ${fmt(x.pe)}, ${x.p}% done${od ? ", " + od + " days overdue" : ""}"><b style="width:${x.p}%"></b></div><span class="g-lab" style="left:calc(var(--dw)*${off(x.ps) + len} + 6px)">${x.p}%${od ? " · " + od + "d late" : ""}</span></div></div>`; }).join(""); }).join("");
-  return `<section class="panel"><div class="ptitle"><h2>Timeline</h2>${planBtn}</div>
-    <div class="g-sum"><span>${items.length} activities planned</span>${late ? chip("bad", `${late} overdue`) : chip("ok", "None overdue")}${missing ? `<span class="note">${missing} without planned dates</span>` : ""}</div>
-    <div class="gantt" role="img" aria-label="Gantt chart of ${items.length} planned activities, ${late} overdue. The same dates are listed on the Activities tab."><div class="g-in" style="--n:${n};--mo:${mon}">
-      <div class="g-row g-head"><div class="g-name">Activity</div><div class="g-track g-ticks">${ticks.join("")}</div></div>${rows}
+  let lo = items.reduce((m, n) => sc[n].ps < m ? sc[n].ps : m, s.startDate || t), hi = items.reduce((m, n) => sc[n].pe > m ? sc[n].pe : m, target > t ? target : t);
+  lo = addDays(lo, -1); hi = addDays(hi, 9);
+  const n0 = diff(hi, lo) + 1, off = d => diff(d, lo), anchor = s.startDate || lo, mo = ((off(anchor) % 7) + 7) % 7;
+  const ticks = []; for (let k = mo; k < n0; k += 7) { const wk = Math.round((k - off(anchor)) / 7) + 1; ticks.push(`<span style="left:calc(var(--dw)*${k})">${s.startDate && wk >= 1 ? `<b>Week ${wk}</b>` : ""}${fmt(addDays(lo, k))}</span>`); }
+  const late = items.filter(n => gOver(s, n)).length, done = items.filter(n => (sc[n].p || 0) >= 100).length;
+  const rows = items.map(n => { const g = GANTT[n - 1], x = sc[n], od = gOver(s, n), len = diff(x.pe, x.ps) + 1, p = x.p || 0, cls = p >= 100 ? "done" : od ? "late" : p > 0 ? "on" : "";
+    return `<div class="g-row${ed ? " tap" : ""}" ${ed ? `data-a="gitem" data-v="${n}" tabindex="0" role="button" aria-label="${esc(g[0])}: ${fmt(x.ps)} to ${fmt(x.pe)}, ${p} percent${od ? ", " + od + " days late" : ""}. Update"` : ""}><div class="g-name" title="${esc(g[0])}"><i>${n}</i>${esc(g[0])}</div><div class="g-track"><div class="g-bar ${cls}" style="left:calc(var(--dw)*${off(x.ps)});width:calc(var(--dw)*${len})" title="${esc(g[0])}: ${fmt(x.ps)} to ${fmt(x.pe)}, ${len} days, ${p}% done${od ? ", " + od + " days late" : ""}"><b style="width:${p}%"></b></div><span class="g-lab" style="left:calc(var(--dw)*${off(x.ps) + len} + 6px)">${len}d · ${p}%${od ? " · " + od + "d late" : ""}</span></div></div>`; }).join("");
+  return `<section class="panel"><div class="ptitle"><h2>Bar chart</h2>${btns}</div>
+    <div class="g-sum"><span>${items.length} works</span><span>${done} completed</span>${late ? chip("bad", `${late} overdue`) : chip("ok", "None overdue")}${ed ? `<span class="note">Tap a row to update it</span>` : ""}</div>
+    <div class="gantt" role="img" aria-label="Bar chart of ${items.length} works, ${done} completed, ${late} overdue"><div class="g-in" style="--n:${n0};--mo:${mo}">
+      <div class="g-row g-head"><div class="g-name">Item of work</div><div class="g-track g-ticks">${ticks.join("")}</div></div>${rows}
       ${t >= lo && t <= hi ? `<div class="g-today" style="left:calc(var(--nw) + var(--dw)*${off(t)} + var(--dw)/2)"><span>Today</span></div>` : ""}${target && target >= lo && target <= hi ? `<div class="g-today tgt" style="left:calc(var(--nw) + var(--dw)*${off(target)} + var(--dw))"><span>Target</span></div>` : ""}
     </div></div>
-    <div class="legend"><span><i class="g-k"></i>Planned</span><span><i class="g-k on"></i>Progress</span><span><i class="g-k done"></i>Completed</span><span><i class="g-k late"></i>Overdue</span></div></section>`;
+    <div class="legend"><span><i class="g-k"></i>Planned</span><span><i class="g-k on"></i>Done so far</span><span><i class="g-k done"></i>Completed</span><span><i class="g-k late"></i>Overdue</span></div></section>`;
 }
 function planForm() {
-  const s = site(R.siteId);
-  dlg("Plan timeline: " + s.name, `<p class="note">Set a planned start and finish date for each activity. Use the phase row to fill a whole phase, then adjust single rows. Leave both dates empty for an activity you do not want on the chart.</p>
-    <div class="tw plan-tbl"><table><thead><tr><th class="n">No</th><th>Activity</th><th>Planned start</th><th>Planned finish</th></tr></thead><tbody>${PHASES.map((ph, pi) => `<tr class="pl-ph"><td></td><td><b>${ph[0]}</b></td><td><input type="date" id="pp-s-${pi}" aria-label="${ph[0]} start"></td><td><div class="row"><input type="date" id="pp-e-${pi}" aria-label="${ph[0]} finish"><button type="button" class="btn ghost sm" data-a="planfill" data-v="${pi}">Apply to phase</button></div></td></tr>` + ACTS.map((a, k) => { if (a[1] !== pi) return ""; const i = k + 1, x = s.acts[i]; return `<tr><td class="n">${i}</td><td>${esc(a[0])}${x.s === "N" ? ' <span class="note">(not applicable)</span>' : ""}</td><td><input type="date" name="ps_${i}" id="pl-s-${i}" data-ph="${pi}" value="${esc(x.ps)}" aria-label="Planned start ${i}"></td><td><input type="date" name="pe_${i}" id="pl-e-${i}" data-ph="${pi}" value="${esc(x.pe)}" aria-label="Planned finish ${i}"></td></tr>`; }).join("")).join("")}</tbody></table></div>`, "plan", "Save timeline", true);
+  const s = site(R.siteId), sc = s.sched || {};
+  dlg("Bar chart plan: " + s.name, `<p class="note">Planned start and finish for each item of work. Leave both dates empty to keep an item off the chart.</p>
+    <div class="tw plan-tbl"><table><thead><tr><th class="n">No</th><th>Item of work</th><th>Planned start</th><th>Planned finish</th><th class="n">% done</th></tr></thead><tbody>${GANTT.map((g, k) => { const n = k + 1, x = sc[n] || {}; return `<tr><td class="n">${n}</td><td>${esc(g[0])} <span class="note">(std ${g[1]} d)</span></td><td><input type="date" name="ps_${n}" value="${esc(x.ps)}" aria-label="Planned start ${n}"></td><td><input type="date" name="pe_${n}" value="${esc(x.pe)}" aria-label="Planned finish ${n}"></td><td><input type="number" name="p_${n}" min="0" max="100" value="${x.p || 0}" aria-label="Percent done ${n}"></td></tr>`; }).join("")}</tbody></table></div>`, "plan", "Save plan", true);
 }
-function actMatch(s, i, f) { const x = s.acts[i]; return !f || (f === "S" ? !!stalledDays(s, i) : f === "O" ? !!overdueDays(s, i) : x.s === f); }
+function gItemForm(n) {
+  const s = site(R.siteId), g = GANTT[n - 1], x = (s.sched || {})[n] || {};
+  dlg(`${n}. ${g[0]}`, `<input type="hidden" name="n" value="${n}"><div class="form">
+    <label>Planned start<input name="ps" type="date" value="${esc(x.ps)}"></label><label>Planned finish<input name="pe" type="date" value="${esc(x.pe)}"></label>
+    <label>Percent done<input name="p" type="number" min="0" max="100" value="${x.p || 0}" required></label></div>
+    <label>Remark<input name="note" value="${esc(x.note)}" placeholder="e.g. waiting for cube test result"></label>
+    <p class="note">Standard duration ${g[1]} days.${g[3] ? ` Enclose: ${esc(g[3])}.` : ""} 100% marks the work completed.</p>`, "gitem", "Save");
+}
+function actMatch(s, i, f) { const x = s.acts[i]; return !f || (f === "S" ? !!stalledDays(s, i) : x.s === f); }
 
 function vVisits() {
   const ws = R.week, days = [0, 1, 2, 3, 4, 5, 6].map(k => addDays(ws, k)), act = sites.filter(s => s.status !== "commissioned");
@@ -274,8 +284,25 @@ function vVisits() {
   <section class="panel"><div class="ptitle"><h2>Visit record</h2></div>${visitsAll.length ? `<div class="tw"><table class="rt"><thead><tr><th>Site</th><th>Date</th><th>By</th><th>In</th><th>Out</th><th>Location check</th><th>Remarks</th></tr></thead><tbody>${visitsAll.slice(0, 40).map(v => `<tr><td>${esc(v.site)}</td><td>${fmtY(v.date)}</td><td>${esc(v.name)}</td><td>${esc(v.inAt)}</td><td>${esc(v.outAt || "Open")}</td><td>${v.atSite === true ? chip("ok", "At site") : v.atSite === false ? chip("bad", `${v.dist} m away`) : chip("", "Not verified")}</td><td>${esc(v.remarks || "")}</td></tr>`).join("")}</tbody></table></div>` : empty("pin", "No visits recorded", "Check-ins by the PMC are listed here with the location check.")}</section>`;
 }
 
+const libUrl = f => DRAW_BASE + f.split("/").map(encodeURIComponent).join("/");
+const libCount = n => n.f ? 1 : n.k.reduce((t, k) => t + libCount(k), 0);
+function libFlat() { if (libFlat.c) return libFlat.c; const out = [], walk = (ks, trail) => ks.forEach(x => x.f ? out.push({ ...x, trail }) : walk(x.k, [...trail, x.t])); walk(DRAW_LIB, []); return (libFlat.c = out); }
+const libFile = (x, trail) => `<li><div class="doc-i">${ic("draw")}</div><div class="doc-m"><b>${esc(x.t)}</b><span>${trail ? esc(trail.join(" › ")) : ""}${trail && x.d ? " · " : ""}${x.d ? esc(x.d) : ""}</span></div><a class="btn ghost sm" href="${esc(libUrl(x.f))}" target="_blank" rel="noopener">${x.x ? "Download " + x.x : "Open"}</a></li>`;
+function libHtml() {
+  const q = R.dq.trim().toLowerCase();
+  if (q) { const words = q.split(/\s+/), hits = libFlat().filter(x => { const h = (x.t + " " + x.trail.join(" ") + " " + (x.d || "") + " " + x.f).toLowerCase(); return words.every(w => h.includes(w)); });
+    return hits.length ? `<ul class="docs">${hits.slice(0, 60).map(x => libFile(x, x.trail)).join("")}</ul>${hits.length > 60 ? `<p class="hint lib-more">Showing 60 of ${hits.length}. Add another word to narrow the list.</p>` : ""}` : empty("search", "No matching drawings", "Try another word, such as tank, culvert or monolith."); }
+  const path = []; let node = { k: DRAW_LIB };
+  for (const i of R.dp) { if (!node.k || !node.k[i]) break; node = node.k[i]; path.push(node.t); }
+  const bc = path.length ? `<nav class="bc" aria-label="Folder path"><button data-a="dpath" data-v="0">All</button>${path.map((t, k) => `<span>›</span>${k === path.length - 1 ? `<b>${esc(t)}</b>` : `<button data-a="dpath" data-v="${k + 1}">${esc(t)}</button>`}`).join("")}</nav>` : "";
+  return bc + `<ul class="docs">${node.k.map((x, i) => x.f ? libFile(x) : `<li class="tap" data-a="dopen" data-v="${i}" tabindex="0"><div class="doc-i fold">${ic("folder")}</div><div class="doc-m"><b>${esc(x.t)}</b><span>${libCount(x)} drawings${x.k.some(c => !c.f) ? " · " + x.k.filter(c => !c.f).map(c => esc(c.t)).slice(0, 5).join(", ") + (x.k.filter(c => !c.f).length > 5 ? "…" : "") : ""}</span></div>${ic("right")}</li>`).join("")}</ul>`;
+}
+function libNav(patch) { Object.assign(R, patch); try { history.pushState({ r: snap() }, ""); } catch (e) { } render(); window.scrollTo(0, 0); }
 function vDraw() {
-  return `<section class="panel"><div class="ptitle"><h2>Standard drawings</h2>${isEO() ? `<button class="btn sm" data-a="stdform">${ic("upload")}Add drawing</button>` : ""}</div>${std.length ? `<ul class="docs">${std.map(d => `<li><div class="doc-i">${ic("draw")}</div><div class="doc-m"><b>${esc(d.title)}</b><span>${esc(d.by)}, ${fmtY(d.date)}</span></div><a class="btn ghost sm" href="${esc(d.url)}" target="_blank" rel="noopener">Open</a></li>`).join("")}</ul>` : empty("draw", "No standard drawings yet", "Drawings common to every site are uploaded once here by the EO.")}</section>
+  return `<section class="panel"><div class="ptitle"><h2>Standard drawings</h2><span class="note">${libFlat().length} drawings</span></div>
+    <div class="lib-search"><label class="search">${ic("search")}<input type="search" data-i="dq" value="${esc(R.dq)}" placeholder="Search, e.g. 20 KL masonry, culvert, monolith" aria-label="Search standard drawings"></label></div>
+    <div id="dlib">${libHtml()}</div></section>
+  ${std.length || isEO() ? `<section class="panel"><div class="ptitle"><h2>Added in the app</h2>${isEO() ? `<button class="btn sm" data-a="stdform">${ic("upload")}Add drawing</button>` : ""}</div>${std.length ? `<ul class="docs">${std.map(d => `<li><div class="doc-i">${ic("draw")}</div><div class="doc-m"><b>${esc(d.title)}</b><span>${esc(d.by)}, ${fmtY(d.date)}</span></div><a class="btn ghost sm" href="${esc(d.url)}" target="_blank" rel="noopener">Open</a></li>`).join("")}</ul>` : empty("upload", "Nothing added here", "Use this for a drawing that is not in the standard library.")}</section>` : ""}
   <section class="panel"><div class="ptitle"><h2>Site-specific drawings</h2></div>${sites.length ? `<ul class="docs">${sites.map(s => `<li class="tap" data-a="opendraw" data-v="${s.id}" tabindex="0"><div class="doc-m"><b>${esc(s.name)}</b><div class="slots">${DRAW_SLOTS.map(([k, n]) => { const x = s.draw && s.draw[k]; return chip(x ? "ok" : "bad", n.replace(" layout", "") + (x ? " R" + x.rev : " missing")); }).join("")}</div></div>${ic("right")}</li>`).join("")}</ul>` : empty("sites", "No projects", "Each project has slots for RO, electrical and foundation layouts.")}</section>`;
 }
 
@@ -355,7 +382,7 @@ function actForm(i) {
     <label>Status<select name="s">${opt("Y", "Yet to start", x.s)}${opt("W", "In progress", x.s)}${opt("C", "Completed", x.s)}${opt("N", "Not applicable", x.s)}</select></label>
     <label>Percent done (when in progress)<input name="p" type="number" min="1" max="99" value="${x.s === "W" ? x.p : ""}"></label></div>
     <label>Pending item or remark<input name="note" value="${esc(x.note)}" placeholder="e.g. chamber cover pending"></label>
-    <div class="form"><label>Planned start<input name="ps" type="date" value="${esc(x.ps)}"></label><label>Planned finish<input name="pe" type="date" value="${esc(x.pe)}"></label></div>
+    ${ACT_LIB[i] ? `<button type="button" class="btn ghost sm lib-link" data-a="libgo" data-v="${esc(ACT_LIB[i])}">${ic("folder")}Standard drawings: ${esc(ACT_LIB[i])}</button>` : ""}
     <label>Photo (optional)<input name="file" type="file" accept="image/*" capture="environment"></label>
     <p class="note">${UPDATE_DAY_NEEDS_PHOTO ? `A photo is optional, but only entries with a photo count towards the ${UPDATE_DAYS_PER_WEEK}-day rule.` : `A photo is optional. Any saved update counts towards the ${UPDATE_DAYS_PER_WEEK}-day rule.`}</p>`, "act", "Save update");
 }
@@ -487,16 +514,14 @@ const F = {
     const eo = users.find(u => u.uid === f.eoUid), pmc = users.find(u => u.uid === f.pmcUid), num = v => v === "" || isNaN(+v) ? null : +v;
     const d = { name: f.name.trim(), place: f.place.trim(), district: f.district, sg: f.sg, eoUid: f.eoUid, eoName: eo ? eo.name : "", soName: f.soName.trim(), pmcUid: f.pmcUid, pmcName: pmc ? pmc.name : "", dealer: f.dealer.trim(), contractor: f.contractor.trim(), wbse: f.wbse.trim(), startDate: f.startDate, targetDays: +f.targetDays || TARGET_DAYS, lat: num(f.lat), lng: num(f.lng) };
     if (f.id) { d.status = f.status; await store.patchSite(f.id, d); }
-    else { const id = await store.createSite({ ...d, cat: f.cat, status: "active", acts: blankActs(), plan: {}, updDays: [], visitDays: [], lastPhotos: [], draw: {}, createdAt: new Date().toISOString(), createdBy: me.name }); R.tab = "sites"; R.siteId = id; R.sub = "acts"; }
+    else { const id = await store.createSite({ ...d, cat: f.cat, status: "active", acts: blankActs(), sched: f.startDate ? stdSched(f.startDate) : {}, plan: {}, updDays: [], visitDays: [], lastPhotos: [], draw: {}, createdAt: new Date().toISOString(), createdBy: me.name }); R.tab = "sites"; R.siteId = id; R.sub = "acts"; }
     closeDlg(); await refresh();
   }),
   act: (f, files) => run(async () => {
     const s = site(R.siteId), i = +f.i, prev = s.acts[i], file = files.file;
     const p = f.s === "C" ? 100 : f.s === "W" ? Math.round(+f.p) : 0;
     if (f.s === "W" && !(p >= 1 && p <= 99)) throw new Error("Enter percent done between 1 and 99");
-    if ((f.ps || f.pe) && !(f.ps && f.pe)) throw new Error("Enter both planned dates, or leave both empty");
-    if (f.ps && f.pe < f.ps) throw new Error("Planned finish cannot be before planned start");
-    await saveEntry(s, i, { s: f.s, p }, f.note.trim(), file, { ps: f.ps, pe: f.pe }); closeDlg(); await refresh(); toast("Update saved");
+    await saveEntry(s, i, { s: f.s, p }, f.note.trim(), file); closeDlg(); await refresh(); toast("Update saved");
   }),
   opening: f => run(async () => {
     const s = site(R.siteId), t = today(), acts = {}; let c = 0;
@@ -520,10 +545,10 @@ const F = {
 };
 
 /* ---------- navigation, menus, filters ---------- */
-const snap = () => ({ tab: R.tab, siteId: R.siteId, sub: R.sub, letter: R.letter });
+const snap = () => ({ tab: R.tab, siteId: R.siteId, sub: R.sub, letter: R.letter, dp: R.dp.slice() });
 function navTo(patch) { const wasOpen = ovlOpen(); if (wasOpen) $("ovl").innerHTML = ""; return go(patch, wasOpen ? "replace" : "push"); }
 Object.assign(H, {
-  tab: v => { R.q = ""; R.fs = ""; R.fc = ""; R.fEO = ""; R.af = ""; navTo({ tab: v, siteId: null, letter: null }); },
+  tab: v => { R.q = ""; R.fs = ""; R.fc = ""; R.fEO = ""; R.af = ""; R.dq = ""; navTo({ tab: v, siteId: null, letter: null, dp: [] }); },
   open: v => { R.af = ""; navTo({ tab: "sites", siteId: v, sub: "acts", letter: null }); },
   opendraw: v => navTo({ tab: "sites", siteId: v, sub: "draw", letter: null }),
   back: () => navTo({ siteId: null }),
@@ -541,7 +566,12 @@ Object.assign(H, {
 });
 Object.assign(H, {
   planform: () => planForm(),
-  planfill: v => { const ps = $("pp-s-" + v).value, pe = $("pp-e-" + v).value; if (!ps || !pe) return toast("Enter both dates in the phase row first", true); if (pe < ps) return toast("Finish cannot be before start", true); document.querySelectorAll(`#ovl input[data-ph="${v}"]`).forEach(el => { el.value = el.name.startsWith("ps_") ? ps : pe; }); },
+  gitem: v => gItemForm(+v),
+  stdsched: () => { const s = site(R.siteId), has = Object.keys(s.sched || {}).length, apply = async () => { const sc = s.sched || {}, std = stdSched(s.startDate), out = {}; GANTT.forEach((g, k) => { const n = k + 1; out[n] = { ...(sc[n] || {}), ps: std[n].ps, pe: std[n].pe, p: (sc[n] || {}).p || 0 }; }); await store.patchSite(s.id, { sched: out }); R.sub = "gantt"; await refresh(); toast("Standard plan applied"); };
+    if (has) confirmDlg("Replace planned dates?", `All 21 items get the standard dates counted from ${fmtY(s.startDate)}. Percent done and remarks are kept.`, "Replace dates", apply); else run(apply); },
+  dopen: v => libNav({ dp: [...R.dp, +v] }),
+  dpath: v => libNav({ dp: R.dp.slice(0, +v) }),
+  libgo: v => { const i = DRAW_LIB.findIndex(x => x.t === v); R.dq = ""; navTo({ tab: "draw", siteId: null, letter: null, dp: i < 0 ? [] : [i] }); },
   delphoto: v => confirmDlg("Delete this photo?", "The photo is removed from the site record and from storage. The update entry stays in the log. This cannot be undone.", "Delete photo", async () => {
     const s = site(R.siteId), u = ((sub[s.id] || {}).updates || []).find(x => x.id === v); if (!u || !u.photo) return;
     await store.removeFile(u.photo.path);
@@ -551,14 +581,22 @@ Object.assign(H, {
   })
 });
 F.plan = f => run(async () => {
-  const s = site(R.siteId), patch = {}; let n = 0;
-  for (let i = 1; i <= ACTS.length; i++) { const ps = f["ps_" + i], pe = f["pe_" + i], x = { ...s.acts[i] };
-    if ((ps || pe) && !(ps && pe)) throw new Error(`Activity ${i}: enter both dates, or leave both empty`);
-    if (ps && pe < ps) throw new Error(`Activity ${i}: finish cannot be before start`);
-    if ((x.ps || "") === ps && (x.pe || "") === pe) continue;
-    if (ps) { x.ps = ps; x.pe = pe; } else { delete x.ps; delete x.pe; } patch["acts." + i] = x; n++; }
-  if (n) await store.patchSite(s.id, patch);
-  closeDlg(); R.sub = "gantt"; await refresh(); toast(n ? `Timeline saved for ${n} activities` : "No changes");
+  const s = site(R.siteId), sc = s.sched || {}, out = {};
+  for (let n = 1; n <= GANTT.length; n++) { const ps = f["ps_" + n], pe = f["pe_" + n], p = Math.round(+f["p_" + n] || 0);
+    if ((ps || pe) && !(ps && pe)) throw new Error(`Item ${n}: enter both dates, or leave both empty`);
+    if (ps && pe < ps) throw new Error(`Item ${n}: finish cannot be before start`);
+    if (p < 0 || p > 100) throw new Error(`Item ${n}: percent done must be 0 to 100`);
+    if (ps) out[n] = { ...(sc[n] || {}), ps, pe, p }; }
+  await store.patchSite(s.id, { sched: out }); closeDlg(); R.sub = "gantt"; await refresh(); toast("Plan saved");
+});
+F.gitem = f => run(async () => {
+  const s = site(R.siteId), n = +f.n, p = Math.round(+f.p);
+  if (!f.ps || !f.pe) throw new Error("Enter both planned dates");
+  if (f.pe < f.ps) throw new Error("Planned finish cannot be before planned start");
+  if (!(p >= 0 && p <= 100)) throw new Error("Percent done must be 0 to 100");
+  const x = { ...((s.sched || {})[n] || {}), ps: f.ps, pe: f.pe, p }; if (f.note.trim()) x.note = f.note.trim(); else delete x.note;
+  if (p >= 100 && !x.done) x.done = today(); if (p < 100) delete x.done;
+  await store.patchSite(s.id, { ["sched." + n]: x }); closeDlg(); await refresh(); toast("Saved");
 });
 Object.assign(C, { fcat: v => { R.fc = v; render(); }, sort: v => { R.sort = v; render(); }, feo: v => { R.fEO = v; render(); } });
 F.confirm = () => { const fn = confirmFn; confirmFn = null; closeDlg(); if (fn) run(fn); };
@@ -568,7 +606,7 @@ window.addEventListener("popstate", e => {
   if (!me || me.role === "pending") return;
   const r = e.state && e.state.r; if (r) go(r, "pop");
 });
-document.addEventListener("input", e => { if (e.target.dataset.i === "q") { R.q = e.target.value; const el = $("plist"); if (el) el.innerHTML = plistHtml(); } });
+document.addEventListener("input", e => { if (e.target.dataset.i === "dq") { R.dq = e.target.value; const el = $("dlib"); if (el) el.innerHTML = libHtml(); } if (e.target.dataset.i === "q") { R.q = e.target.value; const el = $("plist"); if (el) el.innerHTML = plistHtml(); } });
 
 /* ---------- events ---------- */
 document.addEventListener("click", e => {

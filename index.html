@@ -258,6 +258,18 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
   .plan-tbl .pl-ph td:nth-child(4) .row{flex-direction:column;align-items:stretch} .plan-tbl .pl-ph td:nth-child(4) .btn{width:100%}
 }
 
+/* ---- drawings library ---- */
+.lib-search{padding:0 16px 12px} .lib-more{padding:10px 16px}
+.bc{display:flex;flex-wrap:wrap;gap:2px;align-items:center;padding:0 10px 8px;font-size:13.5px}
+.bc button{border:0;background:none;color:var(--blue);font-weight:600;padding:6px;border-radius:8px;cursor:pointer} .bc button:hover{background:var(--soft)}
+.bc span{color:var(--muted)} .bc b{padding:6px;font-weight:600}
+.doc-i.fold{background:#FFF4E0;color:#8A5A00}
+.lib-link{align-self:flex-start}
+.g-row.tap{cursor:pointer} .g-row.tap:hover .g-name{background:var(--soft)} .g-row.tap:active .g-track{background-color:var(--soft)}
+.g-ticks span b{display:block;font-weight:600;color:var(--ink2);font-size:10.5px;line-height:1.1}
+.g-head{height:38px} .g-ticks span{top:4px}
+@media (max-width:799px){.lib-search{padding:0 12px 10px} .bc{padding:0 6px 6px}}
+
 /* ---- overlays ---- */
 .ovl{position:fixed;inset:0;background:rgba(23,43,77,.42);z-index:20;display:flex;align-items:center;justify-content:center;padding:24px;animation:fade .16s ease-out}
 @keyframes fade{from{opacity:0}} @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}} @keyframes up{from{transform:translateY(100%)}}
@@ -400,6 +412,6 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 <div id="fab"></div>
 <div id="ovl"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=2.4"></script>
+<script type="module" src="app.js?v=2.5"></script>
 </body>
 </html>
